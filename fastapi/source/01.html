@@ -1,0 +1,134 @@
+<h1 class="cover">FastAPI</h1>
+<p class="subtitle">The whole map, in plain language, with the code you actually write.</p>
+<p>FastAPI is a Python library for building an API. An API is a menu of requests a program accepts. A phone app, a web page, or another server sends a request. Your FastAPI program checks it, does the work, and sends a response back. This book is that menu, from the first “hello” through a database, login, tests, and a tidy folder layout.</p>
+<p>You need the Python from the Python guide: functions, types, dictionaries, <code>async</code>, and classes. You do not need to already know the web.</p>
+
+<h2>Contents</h2>
+<ol class="toc">
+<li>A request and a response</li>
+<li>The smallest app</li>
+<li>Path, query, and body</li>
+<li>Pydantic, the shape checker</li>
+<li>Status codes and errors</li>
+<li>Many paths, one project</li>
+<li>Dependencies</li>
+<li>A database</li>
+<li>Login</li>
+<li>The edges: files, CORS, background work, sockets</li>
+<li>Tests and settings</li>
+<li>A day of building one resource</li>
+<li>Interview questions and answers</li>
+</ol>
+
+<h1>1. A request and a response</h1>
+<p>Picture a restaurant. The customer is the <strong>client</strong>. The waiter carries one <strong>request</strong>: which dish, and any notes. The kitchen is your function. The plate that comes back is the <strong>response</strong>.</p>
+<p>On the web, the request is an HTTP message.</p>
+<ul>
+<li>The <strong>method</strong> is the kind of job. <code>GET</code> reads. <code>POST</code> creates. <code>PUT</code> replaces. <code>PATCH</code> changes a few fields. <code>DELETE</code> removes.</li>
+<li>The <strong>path</strong> is the dish name, such as <code>/tasks/3</code>.</li>
+<li>The <strong>query</strong> is a note after a question mark: <code>/tasks?done=true</code>.</li>
+<li>The <strong>body</strong> is a parcel of JSON, usually on create and update.</li>
+<li>The <strong>headers</strong> are labels on the envelope, such as the login token.</li>
+</ul>
+<p>The response has a status code and usually a JSON body. <code>200</code> means success. <code>201</code> means created. <code>404</code> means not found. <code>401</code> means you have not proved who you are. <code>422</code> means the parcel failed the shape check. FastAPI sends <code>422</code> for you when a type or a rule fails.</p>
+<p>JSON is text that looks like Python dictionaries and lists. FastAPI turns a Python dict or a Pydantic model into JSON on the way out, and turns JSON into a Python object on the way in.</p>
+
+<h1>2. The smallest app</h1>
+<p>Install the server and the runner. From a virtual environment:</p>
+<pre>python -m venv .venv
+.venv\Scripts\activate
+python -m pip install fastapi uvicorn</pre>
+<p>A file named <code>main.py</code>:</p>
+<pre>from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/")
+def home():
+    return {"message": "hello"}</pre>
+<p><code>app</code> is the restaurant. <code>@app.get("/")</code> says “when a GET arrives for <code>/</code>, call <code>home</code>.” The decorator is the menu entry. The function is the kitchen. A dict return value becomes JSON.</p>
+<p>Start it:</p>
+<pre>uvicorn main:app --reload</pre>
+<p><code>main</code> is the file. <code>app</code> is the variable. <code>--reload</code> restarts when you save, which is for your machine, not for a real server. Open <code>http://127.0.0.1:8000</code>. Open <code>http://127.0.0.1:8000/docs</code>. That second page is Swagger, built from your type hints. You can try every route in the browser. <code>/redoc</code> is the same menu in a reading layout.</p>
+<p>Use <code>def</code> for a normal function. FastAPI runs it in a worker thread so a slow database call does not freeze other requests. Use <code>async def</code> when you <code>await</code> a library that is actually async. Do not put a slow blocking call, such as <code>time.sleep</code> or a normal database driver, inside <code>async def</code>. That freezes every request on the loop. If you are unsure, <code>def</code> is the safe start.</p>
+
+<h1>3. Path, query, and body</h1>
+<p>FastAPI looks at the function arguments and decides where each value comes from.</p>
+<pre>from fastapi import FastAPI, Query
+
+app = FastAPI()
+
+@app.get("/tasks/{task_id}")
+def read_task(task_id: int, q: str | None = None):
+    return {"task_id": task_id, "q": q}</pre>
+<p><code>task_id</code> is in the path because the path string contains <code>{task_id}</code>. The hint <code>int</code> means a request for <code>/tasks/hello</code> is rejected with 422. You never write <code>int(task_id)</code> yourself. <code>q</code> is not in the path and is not a body model, so it is a query parameter. <code>/tasks/3?q=milk</code> fills both.</p>
+<p>A singular Pydantic model (next chapter) is read from the JSON body. If you need two body models, or you want to be obvious, wrap the argument in <code>Body()</code>. Headers use <code>Header()</code>. Cookies use <code>Cookie()</code>.</p>
+<pre>from typing import Annotated
+from fastapi import Header, Path, Query
+
+@app.get("/tasks/{task_id}")
+def read_task(
+    task_id: Annotated[int, Path(ge=1)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 10,
+    x_request_id: Annotated[str | None, Header()] = None,
+):
+    return {"task_id": task_id, "limit": limit, "request_id": x_request_id}</pre>
+<p><code>Annotated</code> is the modern way to say “this type, plus these rules.” <code>ge</code> means greater than or equal. <code>le</code> means less than or equal. Header names like <code>x_request_id</code> become <code>X-Request-Id</code> on the wire.</p>
+<p>Put fixed paths before paths with parameters when they can clash. <code>/tasks/count</code> declared after <code>/tasks/{task_id}</code> can be swallowed by the parameter route. Declare <code>/tasks/count</code> first.</p>
+
+<h1>4. Pydantic, the shape checker</h1>
+<p>A Pydantic model is a class that describes a JSON object. FastAPI uses it to check the request and to build the docs. If a field is missing or the wrong type, the client gets 422 and your function does not run.</p>
+<pre>from pydantic import BaseModel, Field
+
+class TaskIn(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    done: bool = False
+
+class TaskOut(BaseModel):
+    id: int
+    title: str
+    done: bool
+
+@app.post("/tasks", response_model=TaskOut, status_code=201)
+def create_task(task: TaskIn):
+    return {"id": 1, "title": task.title, "done": task.done, "secret": "nope"}</pre>
+<p><code>response_model</code> is the plate you promise. The extra key <code>secret</code> is dropped from the JSON. That is how you keep a password hash out of a user response: leave it off <code>UserOut</code>. The client sends <code>TaskIn</code>. You return something that can fill <code>TaskOut</code>.</p>
+<p>Defaults belong on the model. <code>done: bool = False</code> means a missing <code>done</code> becomes false. A field without a default is required.</p>
+<p>Nested models work. A list field is <code>tags: list[str] = []</code>. Be careful with a mutable default on a normal function. On a Pydantic model, a default of <code>[]</code> is safe in current Pydantic. Prefer <code>Field(default_factory=list)</code> when you want to be obvious.</p>
+<p>You can add a check that looks at more than one field:</p>
+<pre>from pydantic import model_validator
+
+class RangeIn(BaseModel):
+    start: int
+    end: int
+
+    @model_validator(mode="after")
+    def end_after_start(self):
+        if self.end &lt; self.start:
+            raise ValueError("end must be &gt;= start")
+        return self</pre>
+
+<h1>5. Status codes and errors</h1>
+<p>Set the success code on the decorator. Raise <code>HTTPException</code> when the job cannot finish for a reason the client should understand.</p>
+<pre>from fastapi import HTTPException
+
+TASKS = {1: {"id": 1, "title": "Milk", "done": False}}
+
+@app.get("/tasks/{task_id}", response_model=TaskOut)
+def read_task(task_id: int):
+    task = TASKS.get(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return task</pre>
+<p><code>detail</code> becomes the JSON message. Use 404 for a missing row, 409 for a duplicate name, 400 for a rule that is not a shape error, 401 for a bad or missing login, 403 when you know who they are and they may not do this.</p>
+<p>A handler can catch your own exception type and turn it into a response, so services raise <code>NotFound</code> and the web layer translates it.</p>
+<pre>from fastapi import Request
+from fastapi.responses import JSONResponse
+
+class NotFound(Exception):
+    pass
+
+@app.exception_handler(NotFound)
+def not_found(_request: Request, exc: NotFound):
+    return JSONResponse(status_code=404, content={"detail": "Not found"})</pre>
+<p>Do not catch every exception and hide it. An unexpected bug should surface as a 500 in the logs. The client gets a generic message. You get the traceback.</p>

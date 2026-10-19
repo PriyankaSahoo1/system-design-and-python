@@ -1,0 +1,452 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>FastAPI</title><style>
+  @page { size: A4; margin: 16mm 14mm 18mm 14mm; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: Georgia, "Times New Roman", serif; font-size: 11pt; line-height: 1.45; color: #1c1c1c; }
+  h1 { font-family: "Segoe UI", Calibri, sans-serif; font-size: 20pt; line-height: 1.25; margin: 18px 0 10px; page-break-before: always; }
+  h1.cover { page-break-before: avoid; font-size: 28pt; margin-top: 12px; }
+  h2 { font-family: "Segoe UI", Calibri, sans-serif; font-size: 14pt; margin: 16px 0 6px; page-break-after: avoid; }
+  p { margin: 0 0 8px; }
+  ul, ol { margin: 0 0 10px; padding-left: 20px; }
+  li { margin-bottom: 3px; }
+  pre { font-family: Consolas, "Courier New", monospace; font-size: 8.5pt; line-height: 1.35; background: #f6f6f6; padding: 8px 10px; white-space: pre-wrap; page-break-inside: avoid; }
+  code { font-family: Consolas, "Courier New", monospace; font-size: 9.5pt; }
+  .subtitle { font-size: 13pt; margin-top: 0; }
+  .toc { columns: 2; column-gap: 24px; }
+  .end { margin-top: 16px; }
+</style></head><body>
+<h1 class="cover">FastAPI</h1>
+<p class="subtitle">The whole map, in plain language, with the code you actually write.</p>
+<p>FastAPI is a Python library for building an API. An API is a menu of requests a program accepts. A phone app, a web page, or another server sends a request. Your FastAPI program checks it, does the work, and sends a response back. This book is that menu, from the first “hello” through a database, login, tests, and a tidy folder layout.</p>
+<p>You need the Python from the Python guide: functions, types, dictionaries, <code>async</code>, and classes. You do not need to already know the web.</p>
+
+<h2>Contents</h2>
+<ol class="toc">
+<li>A request and a response</li>
+<li>The smallest app</li>
+<li>Path, query, and body</li>
+<li>Pydantic, the shape checker</li>
+<li>Status codes and errors</li>
+<li>Many paths, one project</li>
+<li>Dependencies</li>
+<li>A database</li>
+<li>Login</li>
+<li>The edges: files, CORS, background work, sockets</li>
+<li>Tests and settings</li>
+<li>A day of building one resource</li>
+<li>Interview questions and answers</li>
+</ol>
+
+<h1>1. A request and a response</h1>
+<p>Picture a restaurant. The customer is the <strong>client</strong>. The waiter carries one <strong>request</strong>: which dish, and any notes. The kitchen is your function. The plate that comes back is the <strong>response</strong>.</p>
+<p>On the web, the request is an HTTP message.</p>
+<ul>
+<li>The <strong>method</strong> is the kind of job. <code>GET</code> reads. <code>POST</code> creates. <code>PUT</code> replaces. <code>PATCH</code> changes a few fields. <code>DELETE</code> removes.</li>
+<li>The <strong>path</strong> is the dish name, such as <code>/tasks/3</code>.</li>
+<li>The <strong>query</strong> is a note after a question mark: <code>/tasks?done=true</code>.</li>
+<li>The <strong>body</strong> is a parcel of JSON, usually on create and update.</li>
+<li>The <strong>headers</strong> are labels on the envelope, such as the login token.</li>
+</ul>
+<p>The response has a status code and usually a JSON body. <code>200</code> means success. <code>201</code> means created. <code>404</code> means not found. <code>401</code> means you have not proved who you are. <code>422</code> means the parcel failed the shape check. FastAPI sends <code>422</code> for you when a type or a rule fails.</p>
+<p>JSON is text that looks like Python dictionaries and lists. FastAPI turns a Python dict or a Pydantic model into JSON on the way out, and turns JSON into a Python object on the way in.</p>
+
+<h1>2. The smallest app</h1>
+<p>Install the server and the runner. From a virtual environment:</p>
+<pre>python -m venv .venv
+.venv\Scripts\activate
+python -m pip install fastapi uvicorn</pre>
+<p>A file named <code>main.py</code>:</p>
+<pre>from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/")
+def home():
+    return {"message": "hello"}</pre>
+<p><code>app</code> is the restaurant. <code>@app.get("/")</code> says “when a GET arrives for <code>/</code>, call <code>home</code>.” The decorator is the menu entry. The function is the kitchen. A dict return value becomes JSON.</p>
+<p>Start it:</p>
+<pre>uvicorn main:app --reload</pre>
+<p><code>main</code> is the file. <code>app</code> is the variable. <code>--reload</code> restarts when you save, which is for your machine, not for a real server. Open <code>http://127.0.0.1:8000</code>. Open <code>http://127.0.0.1:8000/docs</code>. That second page is Swagger, built from your type hints. You can try every route in the browser. <code>/redoc</code> is the same menu in a reading layout.</p>
+<p>Use <code>def</code> for a normal function. FastAPI runs it in a worker thread so a slow database call does not freeze other requests. Use <code>async def</code> when you <code>await</code> a library that is actually async. Do not put a slow blocking call, such as <code>time.sleep</code> or a normal database driver, inside <code>async def</code>. That freezes every request on the loop. If you are unsure, <code>def</code> is the safe start.</p>
+
+<h1>3. Path, query, and body</h1>
+<p>FastAPI looks at the function arguments and decides where each value comes from.</p>
+<pre>from fastapi import FastAPI, Query
+
+app = FastAPI()
+
+@app.get("/tasks/{task_id}")
+def read_task(task_id: int, q: str | None = None):
+    return {"task_id": task_id, "q": q}</pre>
+<p><code>task_id</code> is in the path because the path string contains <code>{task_id}</code>. The hint <code>int</code> means a request for <code>/tasks/hello</code> is rejected with 422. You never write <code>int(task_id)</code> yourself. <code>q</code> is not in the path and is not a body model, so it is a query parameter. <code>/tasks/3?q=milk</code> fills both.</p>
+<p>A singular Pydantic model (next chapter) is read from the JSON body. If you need two body models, or you want to be obvious, wrap the argument in <code>Body()</code>. Headers use <code>Header()</code>. Cookies use <code>Cookie()</code>.</p>
+<pre>from typing import Annotated
+from fastapi import Header, Path, Query
+
+@app.get("/tasks/{task_id}")
+def read_task(
+    task_id: Annotated[int, Path(ge=1)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 10,
+    x_request_id: Annotated[str | None, Header()] = None,
+):
+    return {"task_id": task_id, "limit": limit, "request_id": x_request_id}</pre>
+<p><code>Annotated</code> is the modern way to say “this type, plus these rules.” <code>ge</code> means greater than or equal. <code>le</code> means less than or equal. Header names like <code>x_request_id</code> become <code>X-Request-Id</code> on the wire.</p>
+<p>Put fixed paths before paths with parameters when they can clash. <code>/tasks/count</code> declared after <code>/tasks/{task_id}</code> can be swallowed by the parameter route. Declare <code>/tasks/count</code> first.</p>
+
+<h1>4. Pydantic, the shape checker</h1>
+<p>A Pydantic model is a class that describes a JSON object. FastAPI uses it to check the request and to build the docs. If a field is missing or the wrong type, the client gets 422 and your function does not run.</p>
+<pre>from pydantic import BaseModel, Field
+
+class TaskIn(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    done: bool = False
+
+class TaskOut(BaseModel):
+    id: int
+    title: str
+    done: bool
+
+@app.post("/tasks", response_model=TaskOut, status_code=201)
+def create_task(task: TaskIn):
+    return {"id": 1, "title": task.title, "done": task.done, "secret": "nope"}</pre>
+<p><code>response_model</code> is the plate you promise. The extra key <code>secret</code> is dropped from the JSON. That is how you keep a password hash out of a user response: leave it off <code>UserOut</code>. The client sends <code>TaskIn</code>. You return something that can fill <code>TaskOut</code>.</p>
+<p>Defaults belong on the model. <code>done: bool = False</code> means a missing <code>done</code> becomes false. A field without a default is required.</p>
+<p>Nested models work. A list field is <code>tags: list[str] = []</code>. Be careful with a mutable default on a normal function. On a Pydantic model, a default of <code>[]</code> is safe in current Pydantic. Prefer <code>Field(default_factory=list)</code> when you want to be obvious.</p>
+<p>You can add a check that looks at more than one field:</p>
+<pre>from pydantic import model_validator
+
+class RangeIn(BaseModel):
+    start: int
+    end: int
+
+    @model_validator(mode="after")
+    def end_after_start(self):
+        if self.end &lt; self.start:
+            raise ValueError("end must be &gt;= start")
+        return self</pre>
+
+<h1>5. Status codes and errors</h1>
+<p>Set the success code on the decorator. Raise <code>HTTPException</code> when the job cannot finish for a reason the client should understand.</p>
+<pre>from fastapi import HTTPException
+
+TASKS = {1: {"id": 1, "title": "Milk", "done": False}}
+
+@app.get("/tasks/{task_id}", response_model=TaskOut)
+def read_task(task_id: int):
+    task = TASKS.get(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return task</pre>
+<p><code>detail</code> becomes the JSON message. Use 404 for a missing row, 409 for a duplicate name, 400 for a rule that is not a shape error, 401 for a bad or missing login, 403 when you know who they are and they may not do this.</p>
+<p>A handler can catch your own exception type and turn it into a response, so services raise <code>NotFound</code> and the web layer translates it.</p>
+<pre>from fastapi import Request
+from fastapi.responses import JSONResponse
+
+class NotFound(Exception):
+    pass
+
+@app.exception_handler(NotFound)
+def not_found(_request: Request, exc: NotFound):
+    return JSONResponse(status_code=404, content={"detail": "Not found"})</pre>
+<p>Do not catch every exception and hide it. An unexpected bug should surface as a 500 in the logs. The client gets a generic message. You get the traceback.</p>
+
+<h1>6. Many paths, one project</h1>
+<p>One file is fine for a lesson. A real app splits by resource. An <code>APIRouter</code> is a mini app you include into the main app. The prefix is glued onto every path. Tags group the docs page.</p>
+<pre>from fastapi import APIRouter
+
+router = APIRouter(prefix="/tasks", tags=["tasks"])
+
+@router.get("")
+def list_tasks():
+    return []
+
+# main.py
+from tasks import router as tasks_router
+app.include_router(tasks_router)</pre>
+<p>A layout that stays readable:</p>
+<pre>app/
+  main.py          # create FastAPI, include routers, lifespan
+  database.py      # engine and session
+  models.py        # SQLAlchemy tables
+  schemas.py       # Pydantic in and out
+  routers/
+    tasks.py
+  deps.py          # shared Depends functions
+  security.py</pre>
+<p><code>main.py</code> should stay boring: build the app, attach routers, attach middleware. Rules about tasks live in the tasks router and in functions it calls. When a function needs the database, it receives a session. It does not construct the engine itself.</p>
+
+<h1>7. Dependencies</h1>
+<p><code>Depends</code> is FastAPI calling a helper for you and passing the result in. The helper can check a header, open a database session, or load the current user. If the helper raises <code>HTTPException</code>, your path function never runs.</p>
+<pre>from typing import Annotated
+from fastapi import Depends
+
+def get_page(limit: int = 10, offset: int = 0):
+    return {"limit": limit, "offset": offset}
+
+Page = Annotated[dict, Depends(get_page)]
+
+@app.get("/tasks")
+def list_tasks(page: Page):
+    return page</pre>
+<p>A dependency can depend on another dependency. The current user depends on the token. The token depends on the header. You write that chain once.</p>
+<p>A dependency that must clean up uses <code>yield</code>. The code before <code>yield</code> runs on the way in. The code after runs after the response, even when the path raised.</p>
+<pre>def get_session():
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()</pre>
+<p>That is the database session pattern. Every request gets its own session. The session closes when the request ends. You do not share one session across requests.</p>
+
+<h1>8. A database</h1>
+<p>The dictionary in chapter 5 disappears when the process restarts. A database keeps the rows. SQLite is a file, perfect for learning. PostgreSQL is the usual server later. The Python code is almost the same. This chapter uses SQLAlchemy, the library that turns rows into objects.</p>
+<pre>python -m pip install sqlalchemy</pre>
+<pre>from sqlalchemy import create_engine, String, Boolean
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
+
+class Base(DeclarativeBase):
+    pass
+
+class Task(Base):
+    __tablename__ = "tasks"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(200))
+    done: Mapped[bool] = mapped_column(Boolean, default=False)
+
+engine = create_engine("sqlite:///./tasks.db")
+SessionLocal = sessionmaker(bind=engine)
+Base.metadata.create_all(engine)</pre>
+<p><code>create_all</code> makes missing tables. It does not change a table you already created when you add a column. Real projects use a migration tool, Alembic, for those changes. For the first day, <code>create_all</code> is enough.</p>
+<p>Create, read, update, delete, with the session from <code>Depends</code>:</p>
+<pre>from sqlalchemy.orm import Session
+from fastapi import Depends
+
+SessionDep = Annotated[Session, Depends(get_session)]
+
+@router.post("", response_model=TaskOut, status_code=201)
+def create_task(payload: TaskIn, db: SessionDep):
+    row = Task(title=payload.title, done=payload.done)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+@router.get("/{task_id}", response_model=TaskOut)
+def read_task(task_id: int, db: SessionDep):
+    row = db.get(Task, task_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return row
+
+@router.patch("/{task_id}", response_model=TaskOut)
+def update_task(task_id: int, payload: TaskIn, db: SessionDep):
+    row = db.get(Task, task_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    row.title = payload.title
+    row.done = payload.done
+    db.commit()
+    db.refresh(row)
+    return row
+
+@router.delete("/{task_id}", status_code=204)
+def delete_task(task_id: int, db: SessionDep):
+    row = db.get(Task, task_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    db.delete(row)
+    db.commit()</pre>
+<p><code>commit</code> saves. <code>refresh</code> reloads the row so <code>id</code>, which the database just assigned, is filled in. <code>204</code> means success with an empty body. A list endpoint is <code>db.query(Task).offset(offset).limit(limit).all()</code>, or the newer <code>db.scalars(select(Task)).all()</code>. Always limit a list. An unbounded “return every row” becomes the outage.</p>
+<p>The Pydantic <code>TaskOut</code> can be filled from the SQLAlchemy object if you set <code>model_config = ConfigDict(from_attributes=True)</code> on the model. Then returning <code>row</code> works with <code>response_model=TaskOut</code>.</p>
+
+<h1>9. Login</h1>
+<p>A public create-task route is a lesson. A real route asks who is calling. The usual FastAPI shape is OAuth2’s password flow plus a bearer token. The words are heavier than the idea.</p>
+<ol>
+<li>The client sends a username and password to <code>POST /token</code>.</li>
+<li>You check the password against a stored hash. You never store the raw password. A hash made for passwords, such as bcrypt, is one-way.</li>
+<li>You return a signed token that says “this is user 4, and this token dies at this time.” A JWT is that signed parcel.</li>
+<li>Later calls send <code>Authorization: Bearer &lt;token&gt;</code>.</li>
+<li>A dependency reads the header, checks the signature and the expiry, loads the user, or raises 401.</li>
+</ol>
+<pre>python -m pip install "pyjwt[crypto]"</pre>
+<pre>from datetime import datetime, timedelta, timezone
+import jwt
+from fastapi import Depends
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+
+oauth2 = OAuth2PasswordBearer(tokenUrl="token")
+SECRET = "change-me"  # real apps read this from the environment
+
+def make_token(user_id: int) -> str:
+    payload = {
+        "sub": str(user_id),
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=30),
+    }
+    return jwt.encode(payload, SECRET, algorithm="HS256")
+
+def get_current_user(token: Annotated[str, Depends(oauth2)]):
+    try:
+        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return {"id": int(payload["sub"])}
+
+@app.post("/token")
+def login(form: Annotated[OAuth2PasswordRequestForm, Depends()]):
+    # look up form.username, check form.password against the hash
+    return {"access_token": make_token(1), "token_type": "bearer"}
+
+@app.get("/me")
+def me(user: Annotated[dict, Depends(get_current_user)]):
+    return user</pre>
+<p>The password check is the part you must not fake in production. Hash on signup. On login, hash the attempt with the same algorithm and compare. If you compare the raw password to a column of raw passwords, a stolen database is a stolen set of passwords.</p>
+<p>Put <code>Depends(get_current_user)</code> on routes that need a person. Leave <code>/token</code> and <code>/health</code> open. The docs page gets an Authorize button because of <code>OAuth2PasswordBearer</code>, so you can try protected routes in <code>/docs</code>.</p>
+<p>A token in a JWT cannot be unread until it expires, unless you keep a denylist. Short expiry, thirty minutes here, limits the damage of a stolen token. A refresh token is a second, longer token used only to get a new access token. Add it when the product needs to stay logged in for days. The first version can ask the user to log in again.</p>
+
+<h1>10. The edges</h1>
+<h2>CORS</h2>
+<p>A browser page on <code>http://localhost:5173</code> calling an API on <code>http://127.0.0.1:8000</code> is a different origin. The browser blocks it unless the API says that origin is allowed. That permission is CORS. It is a browser rule. A phone app or <code>curl</code> does not care.</p>
+<pre>from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)</pre>
+<p>List the real front-end origins. <code>allow_origins=["*"]</code> together with credentials is rejected by browsers. During a local lesson, the Vite origin above is the one you want.</p>
+
+<h2>Files and forms</h2>
+<p>JSON is the body for structured data. A file upload is multipart form data.</p>
+<pre>from fastapi import File, UploadFile
+
+@app.post("/photos")
+async def upload(file: UploadFile = File(...)):
+    data = await file.read()
+    return {"name": file.filename, "bytes": len(data)}</pre>
+<p>For a large file, read it in chunks and write it to disk or to object storage. Do not hold a video in memory. A normal HTML form uses <code>Form()</code> fields instead of a JSON model. JSON and form fields do not mix in one body.</p>
+
+<h2>Background work</h2>
+<p>Some work should not make the client wait: sending mail, writing a log line. <code>BackgroundTasks</code> runs after the response is sent, in the same process.</p>
+<pre>from fastapi import BackgroundTasks
+
+def write_log(task_id: int):
+    print("created", task_id)
+
+@app.post("/tasks", status_code=201)
+def create_task(payload: TaskIn, background: BackgroundTasks):
+    background.add_task(write_log, 1)
+    return {"id": 1, "title": payload.title}</pre>
+<p>If the process dies, that task dies with it. Mail you must not lose belongs in a real queue, the queue from the system-design book. Background tasks are for small, acceptable-to-lose side work.</p>
+
+<h2>WebSockets</h2>
+<p>HTTP is one request, one response. A WebSocket stays open so the server can push. Chat and live counts use it.</p>
+<pre>from fastapi import WebSocket
+
+@app.websocket("/ws")
+async def ws(websocket: WebSocket):
+    await websocket.accept()
+    while True:
+        text = await websocket.receive_text()
+        await websocket.send_text(f"echo {text}")</pre>
+<p>The loop ends when the client disconnects. Catch <code>WebSocketDisconnect</code> and remove that client from whatever list you were broadcasting to. This is the same “connection registry” idea as the chat design. FastAPI gives you the socket. You still decide who receives which message.</p>
+
+<h2>Lifespan</h2>
+<p>Code that should run once when the process starts, and once when it stops, goes in the lifespan. Opening a connection pool belongs here. Creating tables for a lesson can live here too.</p>
+<pre>from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    Base.metadata.create_all(engine)
+    yield
+    engine.dispose()
+
+app = FastAPI(lifespan=lifespan)</pre>
+<p>The code before <code>yield</code> is startup. The code after is shutdown.</p>
+
+<h1>11. Tests and settings</h1>
+<p>A test calls the app without starting uvicorn. <code>TestClient</code> pretends to be a browser.</p>
+<pre>python -m pip install httpx
+from fastapi.testclient import TestClient
+from main import app
+
+client = TestClient(app)
+
+def test_home():
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.json() == {"message": "hello"}
+
+def test_missing_task():
+    response = client.get("/tasks/999")
+    assert response.status_code == 404</pre>
+<p>Override a dependency so tests do not touch the real database or the real login. The test passes a fake.</p>
+<pre>def fake_user():
+    return {"id": 1}
+
+app.dependency_overrides[get_current_user] = fake_user</pre>
+<p>Clear overrides at the end of the test, or later tests inherit the fake. A database test uses a separate SQLite file, or an in-memory engine, created in a fixture and thrown away after. Do not point tests at the database your evening project is using.</p>
+<p>What to test first: the happy create, the 404, the 422 from a blank title, and one protected route without a token, which must be 401. That is enough to trust the menu. You are not testing FastAPI. You are testing your rules.</p>
+
+<h2>Settings</h2>
+<p>Secrets and machine-specific values stay out of the code. A <code>.env</code> file holds them locally and is listed in <code>.gitignore</code>. The process reads them from the environment.</p>
+<pre>python -m pip install pydantic-settings</pre>
+<pre>from pydantic_settings import BaseSettings, SettingsConfigDict
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env")
+    secret_key: str
+    database_url: str = "sqlite:///./tasks.db"
+
+settings = Settings()</pre>
+<p>A <code>.env</code> file:</p>
+<pre>SECRET_KEY=change-me
+DATABASE_URL=sqlite:///./tasks.db</pre>
+<p>Names are matched without caring about case. If <code>SECRET_KEY</code> is missing, the app refuses to start. That is what you want. A default secret that ships in git is how a token gets forged.</p>
+
+<h1>12. A day of building one resource</h1>
+<p>Build tasks, in this order. Each step runs before you add the next. If you add login and the database and files on the same afternoon, you will not know which piece failed.</p>
+<ol>
+<li>A dict and four routes: list, create, read, delete. Open <code>/docs</code> and click them.</li>
+<li>Replace the dict argument with <code>TaskIn</code> and <code>response_model=TaskOut</code>. Send a blank title and watch 422.</li>
+<li>Raise 404 for a missing id. Test it with <code>TestClient</code>.</li>
+<li>Move the routes onto a router and include it from <code>main.py</code>.</li>
+<li>Swap the dict for SQLite. The session comes from <code>Depends</code>.</li>
+<li>Add <code>/token</code> and put <code>get_current_user</code> on create and delete. List can stay public for the lesson.</li>
+<li>Add CORS only when a browser page on another port calls you.</li>
+</ol>
+<p>A request walks this line. Client, router, dependencies, your function, database, response model, JSON. When something breaks, point at the step. 422 is the shape, before your function. 404 is your function. 401 is the user dependency. 500 is an exception you did not translate, so read the traceback.</p>
+
+<h2>The slips</h2>
+<ul>
+<li><strong>Blocking call inside <code>async def</code>.</strong> Use <code>def</code>, or an async database driver and <code>await</code>.</li>
+<li><strong>One global session.</strong> Create a session per request and close it in <code>finally</code>.</li>
+<li><strong>Returning the SQLAlchemy row with a secret column and no <code>response_model</code>.</strong> The whole object can leak. Set the response model.</li>
+<li><strong>Password stored as text.</strong> Store a password hash.</li>
+<li><strong>Secret key in the file you commit.</strong> Read it from the environment.</li>
+<li><strong><code>/tasks/{task_id}</code> declared above <code>/tasks/count</code>.</strong> The word <code>count</code> is captured as an id. Fixed paths go first.</li>
+<li><strong>Forgetting <code>commit</code>.</strong> The row exists only in the session and vanishes.</li>
+<li><strong>CORS added to please <code>curl</code>.</strong> <code>curl</code> was never blocked. Look at the browser console. The origin must match exactly, including the port.</li>
+<li><strong>A test that uses the real <code>tasks.db</code>.</strong> Override the session dependency.</li>
+</ul>
+
+<h1>13. Interview questions and answers</h1>
+<p><strong>What is FastAPI?</strong> A Python web framework that turns type hints into request checking, JSON responses, and automatic docs. A path function is one menu entry.</p>
+<p><strong>What is the difference between path, query, and body?</strong> The path is part of the URL and identifies the resource, <code>/tasks/3</code>. The query is the filter after <code>?</code>. The body is the JSON parcel, described by a Pydantic model.</p>
+<p><strong>Why 422?</strong> The request reached the app and failed validation: wrong type, missing field, or a field rule. Your function did not run. 400 is for a rule you enforce yourself inside the function.</p>
+<p><strong>What does <code>response_model</code> do?</strong> It filters and documents the output. Extra fields on the object you return are dropped. That is how a password hash stays off the wire.</p>
+<p><strong><code>def</code> or <code>async def</code>?</strong> <code>def</code> runs in a thread pool and may call blocking libraries. <code>async def</code> runs on the event loop and must <code>await</code> instead of blocking. A blocking call inside <code>async def</code> stalls other requests.</p>
+<p><strong>What is <code>Depends</code>?</strong> A function FastAPI runs for you and injects into the path. Use it for the database session, paging, and the current user. <code>yield</code> dependencies get a cleanup step after the response.</p>
+<p><strong>How does login work?</strong> <code>POST /token</code> checks a password against a hash and returns a signed JWT. Later requests send <code>Authorization: Bearer</code>. A dependency decodes the token and raises 401 when the signature or the expiry fails.</p>
+<p><strong>Why hash passwords?</strong> A stolen database of hashes is not a list of passwords. You store a slow password hash, bcrypt or Argon2, and check new attempts against it. You cannot read the original password back, and you should not be able to.</p>
+<p><strong>What is CORS?</strong> A browser refusing to let a page on one origin read a response from another origin, unless the API allows that origin. Tools that are not browsers skip this check.</p>
+<p><strong>How do you test a route?</strong> <code>TestClient</code> calls the app in process. Override dependencies so the test supplies a fake user and a throwaway database. Assert the status code and the JSON.</p>
+<p><strong>Where do settings live?</strong> In the environment, read by a settings object. The secret key is not a string in git.</p>
+<p><strong>When do you not use BackgroundTasks?</strong> When the work must survive a crash. Use a real queue. Background tasks run after the response, in the same process, and die with it.</p>
+
+<h2>You have the map</h2>
+<p>A FastAPI app is a menu of functions. Types and Pydantic check the request. The response model checks what leaves. Dependencies hand in the session and the user. The database remembers the rows. Login is a password hash plus a short-lived token. Tests call the menu without the network. Everything else, files, CORS, sockets, and background work, is a specific kind of request or a specific kind of after-work.</p>
+<p>Build the task resource in the order in chapter 12. When a status code appears, you already know which step produced it.</p>
+<p class="end">End of the FastAPI guide.</p>
+
+</body></html>

@@ -16,4 +16,8 @@ Offline study guides, from first concepts through interview questions.
 
 - [JavaScript and React, with interview answers](javascript-react/JavaScript-and-React-Complete-Guide.pdf) covers the language, React, routing, state, tests, Next.js, and interview questions.
 
+## FastAPI
+
+- [FastAPI](fastapi/FastAPI-Complete-Guide.pdf) covers routes, validation, dependencies, a database, login, tests, and interview answers.
+
 HTML sources used to build the PDFs are kept beside them so the guides can be regenerated later.

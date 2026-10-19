@@ -1,0 +1,213 @@
+<h1>6. Many paths, one project</h1>
+<p>One file is fine for a lesson. A real app splits by resource. An <code>APIRouter</code> is a mini app you include into the main app. The prefix is glued onto every path. Tags group the docs page.</p>
+<pre>from fastapi import APIRouter
+
+router = APIRouter(prefix="/tasks", tags=["tasks"])
+
+@router.get("")
+def list_tasks():
+    return []
+
+# main.py
+from tasks import router as tasks_router
+app.include_router(tasks_router)</pre>
+<p>A layout that stays readable:</p>
+<pre>app/
+  main.py          # create FastAPI, include routers, lifespan
+  database.py      # engine and session
+  models.py        # SQLAlchemy tables
+  schemas.py       # Pydantic in and out
+  routers/
+    tasks.py
+  deps.py          # shared Depends functions
+  security.py</pre>
+<p><code>main.py</code> should stay boring: build the app, attach routers, attach middleware. Rules about tasks live in the tasks router and in functions it calls. When a function needs the database, it receives a session. It does not construct the engine itself.</p>
+
+<h1>7. Dependencies</h1>
+<p><code>Depends</code> is FastAPI calling a helper for you and passing the result in. The helper can check a header, open a database session, or load the current user. If the helper raises <code>HTTPException</code>, your path function never runs.</p>
+<pre>from typing import Annotated
+from fastapi import Depends
+
+def get_page(limit: int = 10, offset: int = 0):
+    return {"limit": limit, "offset": offset}
+
+Page = Annotated[dict, Depends(get_page)]
+
+@app.get("/tasks")
+def list_tasks(page: Page):
+    return page</pre>
+<p>A dependency can depend on another dependency. The current user depends on the token. The token depends on the header. You write that chain once.</p>
+<p>A dependency that must clean up uses <code>yield</code>. The code before <code>yield</code> runs on the way in. The code after runs after the response, even when the path raised.</p>
+<pre>def get_session():
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()</pre>
+<p>That is the database session pattern. Every request gets its own session. The session closes when the request ends. You do not share one session across requests.</p>
+
+<h1>8. A database</h1>
+<p>The dictionary in chapter 5 disappears when the process restarts. A database keeps the rows. SQLite is a file, perfect for learning. PostgreSQL is the usual server later. The Python code is almost the same. This chapter uses SQLAlchemy, the library that turns rows into objects.</p>
+<pre>python -m pip install sqlalchemy</pre>
+<pre>from sqlalchemy import create_engine, String, Boolean
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
+
+class Base(DeclarativeBase):
+    pass
+
+class Task(Base):
+    __tablename__ = "tasks"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(200))
+    done: Mapped[bool] = mapped_column(Boolean, default=False)
+
+engine = create_engine("sqlite:///./tasks.db")
+SessionLocal = sessionmaker(bind=engine)
+Base.metadata.create_all(engine)</pre>
+<p><code>create_all</code> makes missing tables. It does not change a table you already created when you add a column. Real projects use a migration tool, Alembic, for those changes. For the first day, <code>create_all</code> is enough.</p>
+<p>Create, read, update, delete, with the session from <code>Depends</code>:</p>
+<pre>from sqlalchemy.orm import Session
+from fastapi import Depends
+
+SessionDep = Annotated[Session, Depends(get_session)]
+
+@router.post("", response_model=TaskOut, status_code=201)
+def create_task(payload: TaskIn, db: SessionDep):
+    row = Task(title=payload.title, done=payload.done)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+@router.get("/{task_id}", response_model=TaskOut)
+def read_task(task_id: int, db: SessionDep):
+    row = db.get(Task, task_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return row
+
+@router.patch("/{task_id}", response_model=TaskOut)
+def update_task(task_id: int, payload: TaskIn, db: SessionDep):
+    row = db.get(Task, task_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    row.title = payload.title
+    row.done = payload.done
+    db.commit()
+    db.refresh(row)
+    return row
+
+@router.delete("/{task_id}", status_code=204)
+def delete_task(task_id: int, db: SessionDep):
+    row = db.get(Task, task_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    db.delete(row)
+    db.commit()</pre>
+<p><code>commit</code> saves. <code>refresh</code> reloads the row so <code>id</code>, which the database just assigned, is filled in. <code>204</code> means success with an empty body. A list endpoint is <code>db.query(Task).offset(offset).limit(limit).all()</code>, or the newer <code>db.scalars(select(Task)).all()</code>. Always limit a list. An unbounded “return every row” becomes the outage.</p>
+<p>The Pydantic <code>TaskOut</code> can be filled from the SQLAlchemy object if you set <code>model_config = ConfigDict(from_attributes=True)</code> on the model. Then returning <code>row</code> works with <code>response_model=TaskOut</code>.</p>
+
+<h1>9. Login</h1>
+<p>A public create-task route is a lesson. A real route asks who is calling. The usual FastAPI shape is OAuth2’s password flow plus a bearer token. The words are heavier than the idea.</p>
+<ol>
+<li>The client sends a username and password to <code>POST /token</code>.</li>
+<li>You check the password against a stored hash. You never store the raw password. A hash made for passwords, such as bcrypt, is one-way.</li>
+<li>You return a signed token that says “this is user 4, and this token dies at this time.” A JWT is that signed parcel.</li>
+<li>Later calls send <code>Authorization: Bearer &lt;token&gt;</code>.</li>
+<li>A dependency reads the header, checks the signature and the expiry, loads the user, or raises 401.</li>
+</ol>
+<pre>python -m pip install "pyjwt[crypto]"</pre>
+<pre>from datetime import datetime, timedelta, timezone
+import jwt
+from fastapi import Depends
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+
+oauth2 = OAuth2PasswordBearer(tokenUrl="token")
+SECRET = "change-me"  # real apps read this from the environment
+
+def make_token(user_id: int) -> str:
+    payload = {
+        "sub": str(user_id),
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=30),
+    }
+    return jwt.encode(payload, SECRET, algorithm="HS256")
+
+def get_current_user(token: Annotated[str, Depends(oauth2)]):
+    try:
+        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return {"id": int(payload["sub"])}
+
+@app.post("/token")
+def login(form: Annotated[OAuth2PasswordRequestForm, Depends()]):
+    # look up form.username, check form.password against the hash
+    return {"access_token": make_token(1), "token_type": "bearer"}
+
+@app.get("/me")
+def me(user: Annotated[dict, Depends(get_current_user)]):
+    return user</pre>
+<p>The password check is the part you must not fake in production. Hash on signup. On login, hash the attempt with the same algorithm and compare. If you compare the raw password to a column of raw passwords, a stolen database is a stolen set of passwords.</p>
+<p>Put <code>Depends(get_current_user)</code> on routes that need a person. Leave <code>/token</code> and <code>/health</code> open. The docs page gets an Authorize button because of <code>OAuth2PasswordBearer</code>, so you can try protected routes in <code>/docs</code>.</p>
+<p>A token in a JWT cannot be unread until it expires, unless you keep a denylist. Short expiry, thirty minutes here, limits the damage of a stolen token. A refresh token is a second, longer token used only to get a new access token. Add it when the product needs to stay logged in for days. The first version can ask the user to log in again.</p>
+
+<h1>10. The edges</h1>
+<h2>CORS</h2>
+<p>A browser page on <code>http://localhost:5173</code> calling an API on <code>http://127.0.0.1:8000</code> is a different origin. The browser blocks it unless the API says that origin is allowed. That permission is CORS. It is a browser rule. A phone app or <code>curl</code> does not care.</p>
+<pre>from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)</pre>
+<p>List the real front-end origins. <code>allow_origins=["*"]</code> together with credentials is rejected by browsers. During a local lesson, the Vite origin above is the one you want.</p>
+
+<h2>Files and forms</h2>
+<p>JSON is the body for structured data. A file upload is multipart form data.</p>
+<pre>from fastapi import File, UploadFile
+
+@app.post("/photos")
+async def upload(file: UploadFile = File(...)):
+    data = await file.read()
+    return {"name": file.filename, "bytes": len(data)}</pre>
+<p>For a large file, read it in chunks and write it to disk or to object storage. Do not hold a video in memory. A normal HTML form uses <code>Form()</code> fields instead of a JSON model. JSON and form fields do not mix in one body.</p>
+
+<h2>Background work</h2>
+<p>Some work should not make the client wait: sending mail, writing a log line. <code>BackgroundTasks</code> runs after the response is sent, in the same process.</p>
+<pre>from fastapi import BackgroundTasks
+
+def write_log(task_id: int):
+    print("created", task_id)
+
+@app.post("/tasks", status_code=201)
+def create_task(payload: TaskIn, background: BackgroundTasks):
+    background.add_task(write_log, 1)
+    return {"id": 1, "title": payload.title}</pre>
+<p>If the process dies, that task dies with it. Mail you must not lose belongs in a real queue, the queue from the system-design book. Background tasks are for small, acceptable-to-lose side work.</p>
+
+<h2>WebSockets</h2>
+<p>HTTP is one request, one response. A WebSocket stays open so the server can push. Chat and live counts use it.</p>
+<pre>from fastapi import WebSocket
+
+@app.websocket("/ws")
+async def ws(websocket: WebSocket):
+    await websocket.accept()
+    while True:
+        text = await websocket.receive_text()
+        await websocket.send_text(f"echo {text}")</pre>
+<p>The loop ends when the client disconnects. Catch <code>WebSocketDisconnect</code> and remove that client from whatever list you were broadcasting to. This is the same “connection registry” idea as the chat design. FastAPI gives you the socket. You still decide who receives which message.</p>
+
+<h2>Lifespan</h2>
+<p>Code that should run once when the process starts, and once when it stops, goes in the lifespan. Opening a connection pool belongs here. Creating tables for a lesson can live here too.</p>
+<pre>from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    Base.metadata.create_all(engine)
+    yield
+    engine.dispose()
+
+app = FastAPI(lifespan=lifespan)</pre>
+<p>The code before <code>yield</code> is startup. The code after is shutdown.</p>

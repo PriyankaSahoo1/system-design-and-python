@@ -1,0 +1,84 @@
+<h1>11. Tests and settings</h1>
+<p>A test calls the app without starting uvicorn. <code>TestClient</code> pretends to be a browser.</p>
+<pre>python -m pip install httpx
+from fastapi.testclient import TestClient
+from main import app
+
+client = TestClient(app)
+
+def test_home():
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.json() == {"message": "hello"}
+
+def test_missing_task():
+    response = client.get("/tasks/999")
+    assert response.status_code == 404</pre>
+<p>Override a dependency so tests do not touch the real database or the real login. The test passes a fake.</p>
+<pre>def fake_user():
+    return {"id": 1}
+
+app.dependency_overrides[get_current_user] = fake_user</pre>
+<p>Clear overrides at the end of the test, or later tests inherit the fake. A database test uses a separate SQLite file, or an in-memory engine, created in a fixture and thrown away after. Do not point tests at the database your evening project is using.</p>
+<p>What to test first: the happy create, the 404, the 422 from a blank title, and one protected route without a token, which must be 401. That is enough to trust the menu. You are not testing FastAPI. You are testing your rules.</p>
+
+<h2>Settings</h2>
+<p>Secrets and machine-specific values stay out of the code. A <code>.env</code> file holds them locally and is listed in <code>.gitignore</code>. The process reads them from the environment.</p>
+<pre>python -m pip install pydantic-settings</pre>
+<pre>from pydantic_settings import BaseSettings, SettingsConfigDict
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env")
+    secret_key: str
+    database_url: str = "sqlite:///./tasks.db"
+
+settings = Settings()</pre>
+<p>A <code>.env</code> file:</p>
+<pre>SECRET_KEY=change-me
+DATABASE_URL=sqlite:///./tasks.db</pre>
+<p>Names are matched without caring about case. If <code>SECRET_KEY</code> is missing, the app refuses to start. That is what you want. A default secret that ships in git is how a token gets forged.</p>
+
+<h1>12. A day of building one resource</h1>
+<p>Build tasks, in this order. Each step runs before you add the next. If you add login and the database and files on the same afternoon, you will not know which piece failed.</p>
+<ol>
+<li>A dict and four routes: list, create, read, delete. Open <code>/docs</code> and click them.</li>
+<li>Replace the dict argument with <code>TaskIn</code> and <code>response_model=TaskOut</code>. Send a blank title and watch 422.</li>
+<li>Raise 404 for a missing id. Test it with <code>TestClient</code>.</li>
+<li>Move the routes onto a router and include it from <code>main.py</code>.</li>
+<li>Swap the dict for SQLite. The session comes from <code>Depends</code>.</li>
+<li>Add <code>/token</code> and put <code>get_current_user</code> on create and delete. List can stay public for the lesson.</li>
+<li>Add CORS only when a browser page on another port calls you.</li>
+</ol>
+<p>A request walks this line. Client, router, dependencies, your function, database, response model, JSON. When something breaks, point at the step. 422 is the shape, before your function. 404 is your function. 401 is the user dependency. 500 is an exception you did not translate, so read the traceback.</p>
+
+<h2>The slips</h2>
+<ul>
+<li><strong>Blocking call inside <code>async def</code>.</strong> Use <code>def</code>, or an async database driver and <code>await</code>.</li>
+<li><strong>One global session.</strong> Create a session per request and close it in <code>finally</code>.</li>
+<li><strong>Returning the SQLAlchemy row with a secret column and no <code>response_model</code>.</strong> The whole object can leak. Set the response model.</li>
+<li><strong>Password stored as text.</strong> Store a password hash.</li>
+<li><strong>Secret key in the file you commit.</strong> Read it from the environment.</li>
+<li><strong><code>/tasks/{task_id}</code> declared above <code>/tasks/count</code>.</strong> The word <code>count</code> is captured as an id. Fixed paths go first.</li>
+<li><strong>Forgetting <code>commit</code>.</strong> The row exists only in the session and vanishes.</li>
+<li><strong>CORS added to please <code>curl</code>.</strong> <code>curl</code> was never blocked. Look at the browser console. The origin must match exactly, including the port.</li>
+<li><strong>A test that uses the real <code>tasks.db</code>.</strong> Override the session dependency.</li>
+</ul>
+
+<h1>13. Interview questions and answers</h1>
+<p><strong>What is FastAPI?</strong> A Python web framework that turns type hints into request checking, JSON responses, and automatic docs. A path function is one menu entry.</p>
+<p><strong>What is the difference between path, query, and body?</strong> The path is part of the URL and identifies the resource, <code>/tasks/3</code>. The query is the filter after <code>?</code>. The body is the JSON parcel, described by a Pydantic model.</p>
+<p><strong>Why 422?</strong> The request reached the app and failed validation: wrong type, missing field, or a field rule. Your function did not run. 400 is for a rule you enforce yourself inside the function.</p>
+<p><strong>What does <code>response_model</code> do?</strong> It filters and documents the output. Extra fields on the object you return are dropped. That is how a password hash stays off the wire.</p>
+<p><strong><code>def</code> or <code>async def</code>?</strong> <code>def</code> runs in a thread pool and may call blocking libraries. <code>async def</code> runs on the event loop and must <code>await</code> instead of blocking. A blocking call inside <code>async def</code> stalls other requests.</p>
+<p><strong>What is <code>Depends</code>?</strong> A function FastAPI runs for you and injects into the path. Use it for the database session, paging, and the current user. <code>yield</code> dependencies get a cleanup step after the response.</p>
+<p><strong>How does login work?</strong> <code>POST /token</code> checks a password against a hash and returns a signed JWT. Later requests send <code>Authorization: Bearer</code>. A dependency decodes the token and raises 401 when the signature or the expiry fails.</p>
+<p><strong>Why hash passwords?</strong> A stolen database of hashes is not a list of passwords. You store a slow password hash, bcrypt or Argon2, and check new attempts against it. You cannot read the original password back, and you should not be able to.</p>
+<p><strong>What is CORS?</strong> A browser refusing to let a page on one origin read a response from another origin, unless the API allows that origin. Tools that are not browsers skip this check.</p>
+<p><strong>How do you test a route?</strong> <code>TestClient</code> calls the app in process. Override dependencies so the test supplies a fake user and a throwaway database. Assert the status code and the JSON.</p>
+<p><strong>Where do settings live?</strong> In the environment, read by a settings object. The secret key is not a string in git.</p>
+<p><strong>When do you not use BackgroundTasks?</strong> When the work must survive a crash. Use a real queue. Background tasks run after the response, in the same process, and die with it.</p>
+
+<h2>You have the map</h2>
+<p>A FastAPI app is a menu of functions. Types and Pydantic check the request. The response model checks what leaves. Dependencies hand in the session and the user. The database remembers the rows. Login is a password hash plus a short-lived token. Tests call the menu without the network. Everything else, files, CORS, sockets, and background work, is a specific kind of request or a specific kind of after-work.</p>
+<p>Build the task resource in the order in chapter 12. When a status code appears, you already know which step produced it.</p>
+<p class="end">End of the FastAPI guide.</p>
