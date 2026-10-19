@@ -1,0 +1,157 @@
+<h1>15. One small app, line by line</h1>
+<p>This is a task list. You can type a task, add it, and mark it done. Every idea from the React chapters is in here, and nothing else. Read it once as a story, then once as code.</p>
+<pre>import { useState } from "react";
+
+function App() {
+  const [text, setText] = useState("");
+  const [tasks, setTasks] = useState([]);
+
+  function addTask(event) {
+    event.preventDefault();
+    const title = text.trim();
+    if (title === "") return;
+    setTasks((current) =&gt; [
+      ...current,
+      { id: crypto.randomUUID(), title, done: false },
+    ]);
+    setText("");
+  }
+
+  function toggleTask(id) {
+    setTasks((current) =&gt;
+      current.map((task) =&gt;
+        task.id === id ? { ...task, done: !task.done } : task
+      )
+    );
+  }
+
+  const remaining = tasks.filter((task) =&gt; !task.done).length;
+
+  return (
+    &lt;&gt;
+      &lt;h1&gt;Tasks&lt;/h1&gt;
+      &lt;form onSubmit={addTask}&gt;
+        &lt;input
+          value={text}
+          onChange={(event) =&gt; setText(event.target.value)}
+          placeholder="Add a task"
+        /&gt;
+        &lt;button&gt;Add&lt;/button&gt;
+      &lt;/form&gt;
+      &lt;p&gt;{remaining} left&lt;/p&gt;
+      &lt;ul&gt;
+        {tasks.map((task) =&gt; (
+          &lt;li key={task.id}&gt;
+            &lt;label&gt;
+              &lt;input
+                type="checkbox"
+                checked={task.done}
+                onChange={() =&gt; toggleTask(task.id)}
+              /&gt;
+              {task.title}
+            &lt;/label&gt;
+          &lt;/li&gt;
+        ))}
+      &lt;/ul&gt;
+    &lt;/&gt;
+  );
+}
+
+export default App;</pre>
+<p>What each piece is doing:</p>
+<ul>
+<li><code>text</code> is the draft in the box. It changes on every keystroke. It is not a task yet.</li>
+<li><code>tasks</code> is the list. It starts empty.</li>
+<li><code>addTask</code> stops the page reload, ignores blank text, and stores a new array that ends with the new task. Then it clears the box.</li>
+<li><code>toggleTask</code> builds a new array. The matching task is a new object with <code>done</code> flipped. The other tasks are the same objects, which is fine, because they did not change.</li>
+<li><code>remaining</code> is calculated while drawing. It is not a third piece of state. It cannot drift away from the list.</li>
+<li>The checkbox uses <code>checked={task.done}</code>, so the screen is a picture of the data. Clicking calls <code>toggleTask</code>, which changes the data, which draws the screen again.</li>
+</ul>
+<p>A project created with Vite gives you a file <code>src/App.jsx</code> where this function lives, and a <code>main.jsx</code> that starts React:</p>
+<pre>import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import App from "./App.jsx";
+
+createRoot(document.querySelector("#root")).render(
+  &lt;StrictMode&gt;
+    &lt;App /&gt;
+  &lt;/StrictMode&gt;
+);</pre>
+<p><code>#root</code> is an empty element in <code>index.html</code>. React draws <code>App</code> inside it. <code>StrictMode</code> in development renders twice on purpose, so accidental side effects show themselves. That double call is not a bug in your counter.</p>
+<p>To run it on your machine, in a new folder:</p>
+<pre>npm create vite@latest tasks -- --template react
+cd tasks
+npm install
+npm run dev</pre>
+<p>Replace the contents of <code>src/App.jsx</code> with the task list. The terminal prints a local address, usually <code>http://localhost:5173</code>. Open it. The browser has the page. You do not need the internet after the install has finished, until you want another library.</p>
+
+<h2>The same counter in plain JavaScript</h2>
+<p>This is the version people write before React. It is correct. It is also the habit React asks you to leave.</p>
+<pre>let count = 0;
+const button = document.querySelector("#count");
+button.addEventListener("click", () =&gt; {
+  count = count + 1;
+  button.textContent = `Clicked ${count} times`;
+});</pre>
+<p>The data lives in <code>count</code>. The screen is updated by a separate line that knows about the button. If a second place also shows the count, you must remember to update that place too. React’s version has one line that describes the button, and the setter is the only update. Add another <code>{count}</code> anywhere in the component and it stays in step, because both spots are drawn from the same memory.</p>
+
+<h1>16. Why React feels broken</h1>
+<p>These are the moments that feel like React “doesn’t work.” Each one is the picture rule or the hook rule.</p>
+<ul>
+<li><strong>I changed the variable and the screen stayed.</strong> You assigned a value. Call the setter from <code>useState</code>.</li>
+<li><strong>I pushed into the array and the screen stayed.</strong> <code>push</code> edits the old array. Pass a new array to the setter, usually with <code>[...old, item]</code> or <code>map</code>.</li>
+<li><strong>The input will not type.</strong> It has <code>value={text}</code> and the <code>onChange</code> does not call <code>setText</code>.</li>
+<li><strong>The click ran while the page was loading.</strong> You wrote <code>onClick={save()}</code>. Pass <code>onClick={save}</code> or <code>onClick={() =&gt; save(id)}</code>.</li>
+<li><strong>A list item shows the wrong checkbox after a delete.</strong> The <code>key</code> was the array index. Use a stable id.</li>
+<li><strong>An effect runs forever.</strong> The effect sets state, and that state is not listed carefully, or the effect has no dependency list and sets state every time. Fetching in render, outside <code>useEffect</code>, does the same thing: render, set state, render, set state.</li>
+<li><strong>An old fetch overwrites a new one.</strong> Ignore answers after cleanup, as in the user card.</li>
+<li><strong>The screen is blank and there is no error you noticed.</strong> The component returned nothing, often because <code>return</code> and the JSX were on separate lines without parentheses.</li>
+<li><strong>A number 0 appears on the page.</strong> <code>{count &amp;&amp; &lt;p&gt;...&lt;/p&gt;}</code> prints <code>0</code> when the count is zero. Use a comparison.</li>
+<li><strong>Hooks crash with “rendered more hooks than previous.”</strong> A <code>useState</code> or <code>useEffect</code> is inside an <code>if</code>. Keep every hook at the top, before any return.</li>
+<li><strong>Two components each have a copy of the list and they disagree.</strong> Lift the list to the parent and pass it down.</li>
+</ul>
+<p>When you are stuck, say the data out loud. “The tasks array is the truth. The checkbox is a picture of <code>task.done</code>. The click must call a setter with a new array.” If you cannot point at the setter, the screen cannot change.</p>
+
+<h2>A handful of JavaScript slips that look like React</h2>
+<ul>
+<li><code>=</code> assigns. <code>===</code> compares. <code>if (count = 1)</code> assigns 1 and is always true.</li>
+<li><code>const</code> blocks a new assignment. It does not freeze the inside of an object.</li>
+<li><code>map</code> does not edit the original. If you forget to use the array it returns, it looks like nothing happened.</li>
+<li>Forgetting <code>await</code> leaves you holding a Promise. Reading <code>.name</code> on it is <code>undefined</code>.</li>
+<li>A function created inside a loop, or a handler, sees the variables from that render. That is a closure, and it is why a stale <code>count</code> shows up if you read it inside a timeout that was started long ago. The setter function form avoids that for state updates.</li>
+</ul>
+
+<h1>17. Glossary and a study plan</h1>
+<table>
+<tr><th>Word</th><th>The picture</th></tr>
+<tr><td>Value</td><td>A number, text, list, or other thing the program holds</td></tr>
+<tr><td>const / let</td><td>A sticker. const stays. let can be moved to a new value</td></tr>
+<tr><td>Function</td><td>A recipe you can run whenever you want</td></tr>
+<tr><td>Array</td><td>A list. Index 0 is the first item</td></tr>
+<tr><td>Object</td><td>A box of labeled values</td></tr>
+<tr><td>map / filter</td><td>Build a new list by transforming, or by keeping some items</td></tr>
+<tr><td>Spread</td><td>Copy the inside of an array or object into a new one</td></tr>
+<tr><td>DOM</td><td>The browser’s tree of the real page</td></tr>
+<tr><td>Promise</td><td>An IOU for a value that arrives later</td></tr>
+<tr><td>Component</td><td>A function that returns a description of part of the screen</td></tr>
+<tr><td>JSX</td><td>The HTML-looking way to write that description</td></tr>
+<tr><td>Props</td><td>Inputs a parent gives a child. The child only reads them</td></tr>
+<tr><td>State</td><td>Memory React keeps. Changing it with the setter redraws</td></tr>
+<tr><td>Re-render</td><td>React calling your component again to get a new description</td></tr>
+<tr><td>Key</td><td>A stable name so React can track a row in a list</td></tr>
+<tr><td>Effect</td><td>Work that talks to the outside, run after the picture is drawn</td></tr>
+<tr><td>Context</td><td>A value available to descendants without passing it through every middle component</td></tr>
+</table>
+
+<h2>Eight short sessions</h2>
+<ol>
+<li>In the browser console, make a <code>const</code> object, change a field, and try to reassign the name. Say which one worked.</li>
+<li>Write <code>map</code> and <code>filter</code> on a list of three tasks. Predict the new arrays before you log them.</li>
+<li>Build the plain JavaScript counter with a button. Watch the separate line that edits the button.</li>
+<li>Start the Vite task app and get the task list on screen. Add one task. Refresh and notice the list is gone. That is state living only in memory, which is expected.</li>
+<li>Mark a task done. Point at the new object created by the spread. Say why <code>task.done = true</code> would be the wrong edit.</li>
+<li>Add the “remaining” count in a second place on the page. Do not add new state.</li>
+<li>Add <code>useEffect</code> that logs <code>tasks</code> whenever the list changes. Then remove it if you do not need the log. Feel the difference between drawing and an effect.</li>
+<li>Break the input on purpose by deleting <code>onChange</code>. See the freeze. Put <code>onChange</code> back. That feeling is you understanding controlled inputs.</li>
+</ol>
+<p>You know this half when you can build the task list from a blank <code>App</code> function without looking, and when a frozen screen makes you ask “where is the setter?” before you ask “what is wrong with React?” The rest of the map, from <code>reduce</code> and the event loop through the router, Redux, tests, and Next.js, is in the following chapters.</p>

@@ -1,0 +1,235 @@
+<h1>21. The rest of React’s memory</h1>
+<h2>Lazy starting state</h2>
+<p><code>useState(expensive())</code> runs <code>expensive</code> on every render, then throws the result away after the first time. Pass a function when the first value is costly or reads storage. React calls that function only on the first render.</p>
+<pre>const [tasks, setTasks] = useState(() =&gt; {
+  const saved = localStorage.getItem("tasks");
+  return saved === null ? [] : JSON.parse(saved);
+});</pre>
+
+<h2>useReducer</h2>
+<p><code>useState</code> is enough when the next value is a small edit. <code>useReducer</code> is better when many events share one piece of state and the edits have names: add, toggle, remove. A reducer is a function <code>(state, action) =&gt; nextState</code>. It must return a new value and leave the old one unchanged. <code>dispatch</code> sends an action.</p>
+<pre>function reducer(tasks, action) {
+  switch (action.type) {
+    case "add":
+      return [...tasks, action.task];
+    case "toggle":
+      return tasks.map((task) =&gt;
+        task.id === action.id ? { ...task, done: !task.done } : task
+      );
+    default:
+      return tasks;
+  }
+}
+
+function App() {
+  const [tasks, dispatch] = useReducer(reducer, []);
+  function add(title) {
+    dispatch({
+      type: "add",
+      task: { id: crypto.randomUUID(), title, done: false },
+    });
+  }
+}</pre>
+<p>The component says what happened. The reducer says how the list changes. That split is the same idea Redux uses for a whole app.</p>
+
+<h2>useMemo and useCallback</h2>
+<p>Both remember a result until the listed inputs change. <code>useMemo</code> remembers a value. <code>useCallback</code> remembers a function. They do not make a slow program fast by magic. They skip work, and remembering has a cost too.</p>
+<pre>const remaining = useMemo(
+  () =&gt; tasks.filter((task) =&gt; !task.done).length,
+  [tasks]
+);
+
+const toggle = useCallback((id) =&gt; {
+  setTasks((current) =&gt;
+    current.map((task) =&gt;
+      task.id === id ? { ...task, done: !task.done } : task
+    )
+  );
+}, []);</pre>
+<p>Use them when a calculation is actually heavy, or when a child wrapped in <code>React.memo</code> should skip rendering unless its props changed. <code>memo</code> means “if the props are the same as last time, reuse the previous picture.” A new function prop every render looks like a change, which is the case for <code>useCallback</code>. For a task list of twenty items, a plain <code>filter</code> during render is the right code. Add <code>useMemo</code> when you have measured a pause, not before.</p>
+
+<h2>A ref that points at the page</h2>
+<pre>function Search() {
+  const inputRef = useRef(null);
+  return (
+    &lt;&gt;
+      &lt;input ref={inputRef} /&gt;
+      &lt;button onClick={() =&gt; inputRef.current.focus()}&gt;Focus&lt;/button&gt;
+    &lt;/&gt;
+  );
+}</pre>
+<p><code>inputRef.current</code> is the real input after React draws it. Calling <code>focus</code> is a reach into the page, which is allowed for focus, scroll, and measuring size. The text in the box still belongs in state if you need to read it for a save.</p>
+
+<h2>Custom hooks</h2>
+<p>A custom hook is a function whose name starts with <code>use</code> and that calls other hooks. It exists so two components can share behavior without sharing a component. This one keeps a value and mirrors it into <code>localStorage</code>.</p>
+<pre>function useLocalState(key, initial) {
+  const [value, setValue] = useState(() =&gt; {
+    const saved = localStorage.getItem(key);
+    return saved === null ? initial : JSON.parse(saved);
+  });
+
+  useEffect(() =&gt; {
+    localStorage.setItem(key, JSON.stringify(value));
+  }, [key, value]);
+
+  return [value, setValue];
+}</pre>
+<p>Rules, with no exceptions: call hooks only at the top of a component or another hook. Call them in the same order every time. Do not call them inside a loop, an <code>if</code>, or a nested function. The name must start with <code>use</code> so you and the linter can see the rule applies.</p>
+
+<h1>22. Pages, stores, style, and tests</h1>
+<h2>React Router</h2>
+<p>A router picks a component from the address bar. The page does not reload. <code>Link</code> changes the address. <code>useParams</code> reads the changing part of the path. <code>useNavigate</code> changes it from code, after a save for example.</p>
+<pre>import { BrowserRouter, Routes, Route, Link, useParams } from "react-router-dom";
+
+function App() {
+  return (
+    &lt;BrowserRouter&gt;
+      &lt;nav&gt;
+        &lt;Link to="/"&gt;Home&lt;/Link&gt;
+        &lt;Link to="/tasks"&gt;Tasks&lt;/Link&gt;
+      &lt;/nav&gt;
+      &lt;Routes&gt;
+        &lt;Route path="/" element={&lt;Home /&gt;} /&gt;
+        &lt;Route path="/tasks" element={&lt;TaskPage /&gt;} /&gt;
+        &lt;Route path="/tasks/:id" element={&lt;TaskDetail /&gt;} /&gt;
+      &lt;/Routes&gt;
+    &lt;/BrowserRouter&gt;
+  );
+}
+
+function TaskDetail() {
+  const { id } = useParams();
+  return &lt;p&gt;Task {id}&lt;/p&gt;;
+}</pre>
+<p>Install it with <code>npm install react-router-dom</code>. The address <code>/tasks/12</code> renders <code>TaskDetail</code> and <code>id</code> is <code>"12"</code>, a string. One router wraps the whole app. Routes are the table of contents.</p>
+
+<h2>A store, and Redux</h2>
+<p>Context is a pipe for a value. A store is a stronger idea: one state tree, and the only way to change it is to send an action through a reducer. That matters when many screens edit the same data and you want a log of what happened.</p>
+<p>Redux is that store. Redux Toolkit is the way people write it now. <code>createSlice</code> builds the actions and the reducer together. Inside those reducers you may write <code>state.push</code>. Toolkit copies the change for you, using a helper called Immer. That permission is only inside the slice. Everywhere else, you still do not mutate.</p>
+<pre>import { configureStore, createSlice } from "@reduxjs/toolkit";
+import { Provider, useDispatch, useSelector } from "react-redux";
+
+const tasksSlice = createSlice({
+  name: "tasks",
+  initialState: [],
+  reducers: {
+    added(state, action) {
+      state.push(action.payload);
+    },
+  },
+});
+
+const store = configureStore({ reducer: { tasks: tasksSlice.reducer } });
+
+function AddButton() {
+  const dispatch = useDispatch();
+  const count = useSelector((state) =&gt; state.tasks.length);
+  return (
+    &lt;button
+      onClick={() =&gt;
+        dispatch(tasksSlice.actions.added({ id: crypto.randomUUID(), title: "New" }))
+      }
+    &gt;
+      {count} tasks
+    &lt;/button&gt;
+  );
+}
+
+function Root() {
+  return (
+    &lt;Provider store={store}&gt;
+      &lt;AddButton /&gt;
+    &lt;/Provider&gt;
+  );
+}</pre>
+<p><code>useSelector</code> reads. <code>dispatch</code> sends an action. The component does not hold the list. Start with <code>useState</code> and lifted state. Move to a store when several distant screens must edit one shared model and passing props has become the messy part. A theme and a signed-in name can stay in context. A task list used by one page can stay in <code>useState</code>.</p>
+
+<h2>Style</h2>
+<table>
+<tr><th>Way</th><th>What you write</th><th>Use it when</th></tr>
+<tr><td>A CSS file</td><td><code>className="card"</code> and a stylesheet</td><td>The look is shared and simple</td></tr>
+<tr><td>CSS modules</td><td><code>import styles from "./Card.module.css"</code> then <code>styles.card</code></td><td>You want the class name to belong to this file only</td></tr>
+<tr><td>Inline style</td><td><code>style={{ color: "navy" }}</code></td><td>A value depends on data, such as a width</td></tr>
+<tr><td>Utility classes</td><td>Tailwind classes like <code>className="p-4 text-lg"</code></td><td>The team has agreed to style in the markup</td></tr>
+</table>
+<p>Inline styles want objects, and names are camelCase: <code>backgroundColor</code>, not <code>background-color</code>. Pick one main way per project. Mixing all four in one component is how a button becomes impossible to restyle.</p>
+<pre>/* Card.module.css */
+.card { padding: 12px; border: 1px solid #ccc; }</pre>
+<pre>import styles from "./Card.module.css";
+export function Card({ children }) {
+  return &lt;section className={styles.card}&gt;{children}&lt;/section&gt;;
+}</pre>
+
+<h2>Tests</h2>
+<p>A React test renders the component, does what a person would do, and checks the screen. It does not check the private state variable. Testing Library and Vitest are the usual pair in a Vite project.</p>
+<pre>import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { expect, test } from "vitest";
+import Counter from "./Counter.jsx";
+
+test("counts clicks", async () => {
+  render(&lt;Counter /&gt;);
+  const button = screen.getByRole("button", { name: "Clicked 0 times" });
+  await userEvent.click(button);
+  expect(screen.getByRole("button", { name: "Clicked 1 times" })).toBeInTheDocument();
+});</pre>
+<p>The button name is the text a screen reader would use. If the test cannot find it, the button is probably unlabeled for people too. Test the behavior: click Add, see the task. Skip tests that only say a function was called, unless that function is a real edge such as <code>fetch</code>.</p>
+
+<h2>Error boundaries</h2>
+<p>A crash while drawing a child would blank the whole tree. An error boundary is a parent that catches that crash and shows a fallback. This is the class component you still write. Hooks cannot catch a child’s render error.</p>
+<pre>import { Component } from "react";
+
+class ErrorBoundary extends Component {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    if (this.state.failed) return &lt;p&gt;Something broke.&lt;/p&gt;;
+    return this.props.children;
+  }
+}</pre>
+<p>Wrap a panel, not every button. The boundary does not catch errors in event handlers. Those still use <code>try/catch</code>. It catches bad rendering: a mistake while producing the picture.</p>
+
+<h2>A button people can use</h2>
+<p>Use a <code>&lt;button&gt;</code> for actions and a <code>&lt;a&gt;</code> or <code>&lt;Link&gt;</code> for going somewhere. Do not put a click on a <code>&lt;div&gt;</code>. Tie every input to a <code>&lt;label&gt;</code>. The testing section and a keyboard user are asking for the same thing.</p>
+
+<h1>23. Next.js and the full map</h1>
+<p>Next.js is a framework around React. It adds file routes, a server, and a build. In the App Router, a folder under <code>app</code> is a URL. <code>app/page.js</code> is <code>/</code>. <code>app/tasks/page.js</code> is <code>/tasks</code>.</p>
+<p>Components are server components unless the file says <code>"use client"</code> at the top. A server component runs on the server, can read data there, and sends HTML. It cannot use <code>useState</code>, <code>useEffect</code>, or click handlers. A client component is the React you already know: state, effects, and events. Put <code>"use client"</code> on the smallest file that needs those, and leave the rest on the server.</p>
+<pre>// app/page.js  — server component, no state
+export default function Home() {
+  return &lt;h1&gt;Home&lt;/h1&gt;;
+}
+
+// app/counter/page.js
+"use client";
+import { useState } from "react";
+
+export default function Counter() {
+  const [n, setN] = useState(0);
+  return &lt;button onClick={() =&gt; setN(n + 1)}&gt;{n}&lt;/button&gt;;
+}</pre>
+<p>Data fetching on the server can be a direct <code>await</code> in a server component. Data fetching in a client component is still an effect or a library built for that. Do not copy the server <code>await</code> into a client file. The file’s first line tells you which rules apply.</p>
+<p>Environment variables that the browser may see, in Vite, start with <code>VITE_</code> and are read as <code>import.meta.env.VITE_API_URL</code>. In Next.js the public ones start with <code>NEXT_PUBLIC_</code>. Anything without that prefix stays on the server. A secret in a client component is no longer a secret.</p>
+
+<h2>Where each fact lives</h2>
+<table>
+<tr><th>Fact</th><th>Home</th></tr>
+<tr><td>Text currently in one input</td><td><code>useState</code> in that form</td></tr>
+<tr><td>A list one screen edits</td><td><code>useState</code> or <code>useReducer</code> in the parent of that screen</td></tr>
+<tr><td>A list many distant screens edit</td><td>A store, or context if the edits are rare</td></tr>
+<tr><td>Theme, language, current user</td><td>Context, often fed once near the root</td></tr>
+<tr><td>Which page the address shows</td><td>The router</td></tr>
+<tr><td>A value that must survive refresh</td><td><code>localStorage</code> or a server, mirrored into state</td></tr>
+<tr><td>A timer id or an input you must focus</td><td>A ref</td></tr>
+<tr><td>A heavy calculation you have measured</td><td><code>useMemo</code></td></tr>
+</table>
+
+<h2>You have the whole map</h2>
+<p>JavaScript: values, names, decisions, functions, lists, objects, the page, promises, the event loop, classes, modules, storage, and the list tools including <code>reduce</code> and <code>?.</code>.</p>
+<p>React: components, JSX, props, state, lists, forms, effects, refs, reducer, memo, custom hooks, router, context, Redux, CSS, tests, error boundaries, and what Next.js adds with server and client components.</p>
+<p>The order to practice is still the task list, then refresh-proof storage with the custom hook, then a second page with the router, then one test that clicks Add. The store and Next.js come after those feel ordinary. The screen is still a picture of data. The new chapters only change where that data lives and when the picture is drawn.</p>
+<p class="end">End of the complete JavaScript and React guide.</p>

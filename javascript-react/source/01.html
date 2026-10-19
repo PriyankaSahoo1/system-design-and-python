@@ -1,0 +1,190 @@
+<h1 class="cover">JavaScript and React</h1>
+<p class="subtitle">Everything you need, explained the way a careful kid would want it. With examples.</p>
+<p>You already understand ideas. The hard part is the words. This book gives each word a picture, then a tiny program, then the sentence people say in real work. Read it in order. JavaScript comes first, because React is JavaScript with a rule for drawing the screen.</p>
+<p>A concept is yours when you can hide the example, write it again, and say what the screen or the number will be before you run it.</p>
+
+<h2>Contents</h2>
+<ol class="toc">
+<li>The four jobs on a web page</li>
+<li>Values, names, and types</li>
+<li>Decisions and repetition</li>
+<li>Functions</li>
+<li>Lists and labeled boxes</li>
+<li>The page and clicks</li>
+<li>Waiting without freezing</li>
+<li>What React is</li>
+<li>Components and JSX</li>
+<li>Props: inputs to a brick</li>
+<li>State: memory that redraws</li>
+<li>Lists, choices, and forms</li>
+<li>Effects: work after the drawing</li>
+<li>How data moves</li>
+<li>One small app, line by line</li>
+<li>Why React feels broken</li>
+<li>Glossary and a study plan</li>
+<li>More of the language</li>
+<li>Classes, this, and modules</li>
+<li>The event loop</li>
+<li>The rest of React’s memory</li>
+<li>Pages, stores, style, and tests</li>
+<li>Next.js and the full map</li>
+<li>Interview questions and answers</li>
+</ol>
+
+<h1>1. The four jobs on a web page</h1>
+<p>A page in the browser is four jobs living together.</p>
+<ul>
+<li><strong>HTML</strong> is the nouns. A heading, a button, a list. It says what exists.</li>
+<li><strong>CSS</strong> is the clothes and the chairs. Color, size, and where things sit.</li>
+<li><strong>JavaScript</strong> is the behavior. When someone clicks, JavaScript decides what happens next.</li>
+<li><strong>React</strong> is a way to write that behavior so the screen is always a picture of your data. You describe the picture. React updates the page.</li>
+</ul>
+<p>JavaScript also runs outside the browser, in a program called Node. The language is the same. The browser adds the page and the mouse. Node adds files and servers. This book teaches the language first, then the browser just enough, then React.</p>
+<p>You can try a line in the browser: open any page, press F12, choose Console, and type <code>2 + 2</code>. The answer <code>4</code> is JavaScript. For React you will later use a project tool. You do not need that tool to understand the ideas.</p>
+
+<h1>2. Values, names, and types</h1>
+<p>A <strong>value</strong> is a thing the program can hold: a number, some text, yes-or-no, a list. A <strong>name</strong> is a sticker on that thing. In JavaScript the sticker words are <code>const</code> and <code>let</code>.</p>
+<pre>const name = "Priya";
+let score = 9;
+score = score + 1;</pre>
+<p><code>const</code> means “this sticker stays on this thing.” You cannot write <code>name = "Anu"</code> later. <code>let</code> means the sticker can move to a new thing. Use <code>const</code> unless you know the sticker must move. An old word, <code>var</code>, also makes stickers, but it leaks out of blocks in surprising ways. Leave it alone.</p>
+<p>The important types:</p>
+<table>
+<tr><th>Type</th><th>Example</th><th>Meaning</th></tr>
+<tr><td>number</td><td><code>3</code>, <code>1.5</code></td><td>A number. There is one number type, not separate whole-number and decimal types.</td></tr>
+<tr><td>string</td><td><code>"hi"</code></td><td>Text. Quotes can be single, double, or backticks.</td></tr>
+<tr><td>boolean</td><td><code>true</code>, <code>false</code></td><td>Yes or no.</td></tr>
+<tr><td>undefined</td><td><code>undefined</code></td><td>“Nobody put a value here.”</td></tr>
+<tr><td>null</td><td><code>null</code></td><td>“A value is here on purpose, and it is empty.”</td></tr>
+<tr><td>object</td><td><code>{ city: "Pune" }</code></td><td>A box of labeled values.</td></tr>
+<tr><td>array</td><td><code>[1, 2, 3]</code></td><td>A list. Arrays are a kind of object.</td></tr>
+</table>
+<p><code>null</code> is a choice you make: “no user.” <code>undefined</code> is what you get when you ask for a name that was never given a value, or a missing list slot.</p>
+<p>Text can include a calculation by using backticks and <code>${ }</code>. That is a template string.</p>
+<pre>const name = "Priya";
+const score = 10;
+const line = `${name} scored ${score}`;</pre>
+<p>Compare with <code>===</code> and <code>!==</code>. Those check the value and the type. <code>==</code> tries to convert types first, so <code>"5" == 5</code> is true and <code>"5" === 5</code> is false. Use <code>===</code>. The surprise conversions are how quiet bugs start.</p>
+<pre>console.log(1 + "2");   // "12"  number becomes text and they join
+console.log(1 + 2);     // 3</pre>
+<p><code>console.log</code> prints to the console so you can see a value. It is the flashlight. It is not the product.</p>
+<p>A <code>const</code> object can still change inside. The sticker cannot move. The stuff in the box can.</p>
+<pre>const user = { city: "Pune" };
+user.city = "Mumbai";     // allowed
+// user = { city: "Goa" }; // not allowed with const</pre>
+
+<h1>3. Decisions and repetition</h1>
+<p>An <code>if</code> runs a block only when a test is true. <code>else if</code> is the next test. <code>else</code> is “none of those.”</p>
+<pre>let grade;
+if (score &gt;= 90) {
+  grade = "A";
+} else if (score &gt;= 80) {
+  grade = "B";
+} else {
+  grade = "keep going";
+}</pre>
+<p>These values count as false in a test: <code>false</code>, <code>0</code>, <code>""</code>, <code>null</code>, <code>undefined</code>, and <code>NaN</code> (a number that means “not a number,” often from bad math). Everything else counts as true, including the text <code>"0"</code> and an empty list. An empty list is true. That surprises people.</p>
+<p>A <code>for</code> loop repeats. This one walks indexes <code>0</code>, <code>1</code>, and <code>2</code>.</p>
+<pre>const colors = ["red", "blue", "green"];
+for (let i = 0; i &lt; colors.length; i++) {
+  console.log(colors[i]);
+}</pre>
+<p><code>for...of</code> walks the items and is usually what you want.</p>
+<pre>for (const color of colors) {
+  console.log(color);
+}</pre>
+<p><code>while</code> repeats as long as a test stays true. If nothing inside the loop makes the test false, it never ends. That is an infinite loop. The page freezes because JavaScript in the browser does one job at a time on the main path.</p>
+
+<h1>4. Functions</h1>
+<p>A function is a named recipe. You define it once. You call it whenever you want that result. <code>return</code> sends a value back and stops the function. No <code>return</code> means the function gives back <code>undefined</code>.</p>
+<pre>function clamp(n, low, high) {
+  if (n &lt; low) return low;
+  if (n &gt; high) return high;
+  return n;
+}
+clamp(12, 0, 10);   // 10</pre>
+<p>An arrow function is the same idea written shorter. It is the form React uses most.</p>
+<pre>const clamp = (n, low, high) =&gt; {
+  if (n &lt; low) return low;
+  if (n &gt; high) return high;
+  return n;
+};</pre>
+<p>When the body is one expression, you can skip the braces and the word <code>return</code>.</p>
+<pre>const double = (n) =&gt; n * 2;</pre>
+<p>Parameters are the blanks in the recipe. Arguments are the values you fill in at the call. Extra arguments are ignored. Missing ones are <code>undefined</code>.</p>
+<p>A function can see names outside itself. That outside memory is a <strong>closure</strong>. The inner function keeps using <code>step</code> even after <code>makeAdder</code> has finished.</p>
+<pre>function makeAdder(step) {
+  return (n) =&gt; n + step;
+}
+const add5 = makeAdder(5);
+add5(2);   // 7</pre>
+<p>Think of <code>makeAdder(5)</code> as a machine that was built already holding the number 5.</p>
+<p>Functions are values. You can put one in a variable, pass it to another function, or return it. React does this all day: a component is a function, and an event handler is a function you hand to a button.</p>
+
+<h1>5. Lists and labeled boxes</h1>
+<p>An array is a list. The first item is index <code>0</code>. <code>length</code> is how many items. <code>push</code> adds at the end and changes the list. That change-in-place matters later, because React wants new lists, not secret edits.</p>
+<pre>const nums = [10, 20, 30];
+nums[0];          // 10
+nums.push(40);    // nums is now [10, 20, 30, 40]</pre>
+<p>Three methods do most list work. Each one takes a function and does not change the original list. They return something new.</p>
+<pre>const nums = [1, 2, 3, 4];
+
+const doubled = nums.map((n) =&gt; n * 2);
+// [2, 4, 6, 8]
+
+const big = nums.filter((n) =&gt; n &gt;= 3);
+// [3, 4]
+
+const found = nums.find((n) =&gt; n &gt; 2);
+// 3, the first match, or undefined</pre>
+<p><code>map</code> means “turn every item into a new item, same count.” <code>filter</code> means “keep the items that pass the test.” <code>find</code> means “give me the first match.” React lists are almost always a <code>map</code>.</p>
+<p>An object is a box of labels.</p>
+<pre>const book = { title: "Raft", pages: 80 };
+book.title;                 // "Raft"
+book["pages"];              // 80
+const copy = { ...book, pages: 90 };</pre>
+<p><code>...book</code> is the spread. It copies the labels into a new box. <code>copy</code> is a new object. <code>book</code> still has 80 pages. This is the safe way to “change” data in React: copy, then override the one label that changed.</p>
+<p>You can pull labels out into names. That is destructuring.</p>
+<pre>const { title, pages } = book;
+const [first, second] = [10, 20];</pre>
+<p>Arrays and objects are compared by identity, not by looking inside. Two lists with the same numbers are not <code>===</code>. They are two boxes.</p>
+<pre>const a = [1, 2];
+const b = [1, 2];
+console.log(a === b);   // false</pre>
+
+<h1>6. The page and clicks</h1>
+<p>The browser turns HTML into a tree of objects called the <strong>DOM</strong>, the document object model. JavaScript can find a node and change it.</p>
+<pre>&lt;button id="save"&gt;Save&lt;/button&gt;
+&lt;p id="message"&gt;&lt;/p&gt;
+
+&lt;script&gt;
+  const button = document.querySelector("#save");
+  const message = document.querySelector("#message");
+  button.addEventListener("click", () =&gt; {
+    message.textContent = "Saved";
+  });
+&lt;/script&gt;</pre>
+<p><code>document.querySelector</code> finds the first matching piece. <code>addEventListener</code> says “when this happens, run this function.” The function is the handler. <code>textContent</code> sets the words. This is real and useful. It is also how pages become a tangle: every handler reaches into the page and edits whatever it wants. React exists so you stop doing that by hand.</p>
+<p>You still need this picture. React’s job is to be the person who edits the DOM for you, after you describe the screen.</p>
+
+<h1>7. Waiting without freezing</h1>
+<p>Some work is not finished on this line: loading a user from the network, waiting one second, reading a file. If the browser waited with its arms folded, the page could not scroll. So JavaScript starts the slow job and keeps going. The result arrives later.</p>
+<p>A <strong>Promise</strong> is an IOU. It will become a value, or it will fail. <code>async</code> and <code>await</code> let you write the waiting in a straight line.</p>
+<pre>async function loadUser(id) {
+  const response = await fetch(`/users/${id}`);
+  if (!response.ok) {
+    throw new Error("Could not load user");
+  }
+  return response.json();
+}</pre>
+<p>Read it as: “Pause this function until <code>fetch</code> finishes. Other code on the page may run while we pause. Then continue on the next line.” <code>fetch</code> is the browser’s way to ask a server for data. <code>response.json()</code> reads the answer as data.</p>
+<p><code>try</code> and <code>catch</code> hold a failure so the whole page does not crash.</p>
+<pre>async function show() {
+  try {
+    const user = await loadUser(3);
+    console.log(user.name);
+  } catch (error) {
+    console.log(error.message);
+  }
+}</pre>
+<p>The mistake is to treat the IOU as the value. <code>loadUser(3)</code> without <code>await</code> is a Promise, not a user. You cannot read <code>.name</code> on it yet.</p>

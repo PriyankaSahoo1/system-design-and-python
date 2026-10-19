@@ -1,0 +1,138 @@
+<h1>18. More of the language</h1>
+<p>These are the tools you meet in real files after the basics feel familiar. Each one removes a kind of clumsiness.</p>
+
+<h2>Defaults, rest, and safe looking</h2>
+<pre>function greet(name = "guest") {
+  return `Hello, ${name}`;
+}
+
+function total(...nums) {
+  return nums.reduce((sum, n) =&gt; sum + n, 0);
+}
+total(1, 2, 3);   // 6</pre>
+<p>A default fills in when the caller passes nothing or passes <code>undefined</code>. <code>...nums</code> packs every argument into an array. That is the rest parameter.</p>
+<p>Optional chaining <code>?.</code> stops the lookup when the value is <code>null</code> or <code>undefined</code>, instead of crashing.</p>
+<pre>const city = user?.address?.city;</pre>
+<p>If <code>user</code> is missing, or <code>address</code> is missing, <code>city</code> is <code>undefined</code>. You did not have to write three <code>if</code> statements.</p>
+<p><code>??</code> means “use the right side only when the left side is <code>null</code> or <code>undefined</code>.” It does not treat <code>0</code> or <code>""</code> as empty. <code>||</code> does treat those as empty, which is wrong for a score of 0 or a blank-but-present nickname.</p>
+<pre>const score = savedScore ?? 0;
+const label = nickname || "friend";</pre>
+
+<h2>More list tools</h2>
+<pre>const nums = [1, 2, 3, 4];
+nums.includes(3);                         // true
+nums.some((n) =&gt; n &gt; 3);                  // true, at least one
+nums.every((n) =&gt; n &gt; 0);                 // true, all of them
+nums.slice(1, 3);                         // [2, 3], original unchanged
+nums.findIndex((n) =&gt; n === 3);           // 2</pre>
+<p><code>slice</code> copies a section and leaves the list alone. <code>splice</code> edits the original list: it can delete and insert at an index. In React state, prefer <code>slice</code>, <code>filter</code>, and <code>map</code>, which return new lists. <code>splice</code> is the in-place tool, the same family as <code>push</code>.</p>
+<p><code>reduce</code> walks the list and carries one running result. The second argument is the starting result.</p>
+<pre>const total = [10, 20, 30].reduce((sum, n) =&gt; sum + n, 0);
+// 60
+
+const byId = tasks.reduce((box, task) =&gt; {
+  box[task.id] = task;
+  return box;
+}, {});</pre>
+<p>Read it as “start from 0, and for each number, return the next sum.” If you can say it with <code>map</code> or <code>filter</code>, do that. Use <code>reduce</code> when the result is one combined value: a total, a grouped object, a tally.</p>
+
+<h2>Map, Set, and JSON</h2>
+<p>A <code>Set</code> holds unique values and answers “is this in here?” quickly. A <code>Map</code> is a dictionary whose keys can be anything, not only strings. Ordinary objects are still the right box when the labels are strings you wrote yourself. Reach for <code>Map</code> when the key is an object or when you are adding and deleting keys constantly.</p>
+<pre>const seen = new Set();
+seen.add("a");
+seen.has("a");   // true</pre>
+<p>JSON is text that looks like JavaScript data. Servers send it. <code>localStorage</code> stores it. <code>JSON.stringify</code> turns data into text. <code>JSON.parse</code> turns text back into data. A function cannot survive that trip. Dates become strings.</p>
+<pre>const text = JSON.stringify({ title: "Buy milk", done: false });
+const task = JSON.parse(text);</pre>
+
+<h2>Errors you raise yourself</h2>
+<pre>function parseCount(text) {
+  const n = Number(text);
+  if (Number.isNaN(n)) {
+    throw new Error("Count must be a number");
+  }
+  return n;
+}</pre>
+<p><code>throw</code> stops the function and jumps to the nearest <code>catch</code>. <code>Number("hi")</code> is <code>NaN</code>, and <code>NaN === NaN</code> is false, so the test is <code>Number.isNaN</code>.</p>
+
+<h2>Remembering in the browser</h2>
+<p><code>localStorage</code> keeps strings for this site even after the tab closes. <code>sessionStorage</code> keeps them until the tab closes. Neither one is a database. Both are per site, visible to anyone who can use the browser on that machine, and limited to a few megabytes.</p>
+<pre>localStorage.setItem("tasks", JSON.stringify(tasks));
+const saved = localStorage.getItem("tasks");
+const tasksAgain = saved === null ? [] : JSON.parse(saved);</pre>
+<p>A React app that should survive refresh reads storage when state is created and writes it after the list changes. That pair is a custom hook in chapter 21. Do not put passwords or tokens you must hide into <code>localStorage</code>. Any script on the page can read it.</p>
+
+<h2>Timers</h2>
+<pre>const id = setTimeout(() =&gt; {
+  console.log("one second later");
+}, 1000);
+clearTimeout(id);
+
+const tick = setInterval(() =&gt; {
+  console.log("tick");
+}, 1000);
+clearInterval(tick);</pre>
+<p>The number is milliseconds. The function does not run inside the current recipe. It is scheduled. In React, start the timer in an effect and clear it in the cleanup, or the timer keeps firing after the component is gone.</p>
+
+<h1>19. Classes, this, and modules</h1>
+<h2>This</h2>
+<p><code>this</code> is “the object before the dot at the call.” It is not “the object where the function was written,” except for arrow functions.</p>
+<pre>const user = {
+  name: "Priya",
+  greet() {
+    return this.name;
+  },
+};
+user.greet();          // "Priya"
+const greet = user.greet;
+greet();               // undefined, nothing is before the dot</pre>
+<p>An arrow function does not get its own <code>this</code>. It uses the <code>this</code> of the place it was written. That is why event handlers inside React components are arrows or functions declared in the component: they see the render’s variables through a closure, and you rarely need <code>this</code> at all in modern React.</p>
+<p><code>fn.call(obj, arg)</code> and <code>fn.bind(obj)</code> set the object that will be <code>this</code>. You will read them in older code. You will rarely write them in a new React app.</p>
+
+<h2>Classes</h2>
+<p>A class is a blueprint, the same idea as in other languages. <code>constructor</code> runs when you write <code>new</code>. Methods live on the blueprint. <code>extends</code> makes a more specific blueprint. <code>super</code> calls the parent version.</p>
+<pre>class Vehicle {
+  constructor(name) {
+    this.name = name;
+  }
+  label() {
+    return this.name;
+  }
+}
+
+class Bus extends Vehicle {
+  label() {
+    return `Bus ${super.label()}`;
+  }
+}
+
+const bus = new Bus("River");
+bus.label();   // "Bus River"</pre>
+<p>Under the class, JavaScript still uses prototypes: if an object does not have a field, it looks on its blueprint, then on that blueprint’s parent. You can write code for years without touching <code>Object.getPrototypeOf</code>. The useful sentence is that a method is shared, and fields set on <code>this</code> belong to that one object.</p>
+<p>React function components replaced class components for everyday UI. One place still uses a class: an error boundary, in chapter 22, because that is how React lets a parent catch a crash in a child.</p>
+
+<h2>Modules</h2>
+<p>A module is a file that chooses what to share. Other files import those names. The top of the file runs once, the first time it is imported.</p>
+<pre>// math.js
+export function add(a, b) {
+  return a + b;
+}
+export default function clamp(n) {
+  return n &lt; 0 ? 0 : n;
+}
+
+// main.js
+import clamp, { add } from "./math.js";</pre>
+<p>The default import has no braces. Named imports have braces and must match the exported name. <code>export default</code> is one main thing per file, often a React component. Named exports are the rest. Do not make a file that both computes on import and starts the whole app. The app starts from <code>main.jsx</code>.</p>
+
+<h1>20. The event loop</h1>
+<p>JavaScript does one piece of your code at a time. That current piece is the call stack: the recipe on the counter. Slow browser work, such as a timer or a network request, happens off to the side. When it finishes, a callback is placed in a queue. The queue runs only when the stack is empty.</p>
+<p>There are two queues that matter. Promise callbacks are the fast tray, called microtasks. Timers are the later tray, called macrotasks. The fast tray is emptied before the next timer runs.</p>
+<pre>console.log("A");
+setTimeout(() =&gt; console.log("B"), 0);
+Promise.resolve().then(() =&gt; console.log("C"));
+console.log("D");
+// A, then D, then C, then B</pre>
+<p>Say it in order. <code>A</code> prints now. The timer is scheduled, even with a delay of 0. The promise callback is scheduled on the fast tray. <code>D</code> prints now. The stack is empty. The fast tray runs, so <code>C</code>. Then the timer runs, so <code>B</code>.</p>
+<p>This is why a long loop freezes the page: the stack never empties, so clicks and timers wait. This is why <code>await</code> gives the page a chance to breathe: it pauses that function and lets the stack clear. This is why setting state many times in one click still draws once: React waits until your event handler finishes, then renders. That waiting-until-the-end is batching.</p>
+<p>A timeout of 0 does not mean “right now.” It means “after the current recipe and after the promise tray.”</p>

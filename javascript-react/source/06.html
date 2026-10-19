@@ -1,0 +1,70 @@
+<h1>24. Interview questions and answers</h1>
+<p>Say the answer in a few sentences, then give the example if they ask you to go deeper. The questions follow the book. A strong answer names the rule, not a library slogan.</p>
+
+<h2>JavaScript</h2>
+<p><strong>What is the difference between <code>const</code>, <code>let</code>, and <code>var</code>?</strong> <code>const</code> cannot be reassigned. <code>let</code> can. Both live in the block where they were written. <code>var</code> is function-scoped and can be seen before its line in surprising ways. Use <code>const</code> until you must reassign. A <code>const</code> object can still have its fields changed. The sticker is fixed. The inside of the box is not.</p>
+<p><strong>What is the difference between <code>==</code> and <code>===</code>?</strong> <code>===</code> checks value and type. <code>==</code> converts types first, so <code>"5" == 5</code> is true and <code>"5" === 5</code> is false. Use <code>===</code>.</p>
+<p><strong>What is <code>null</code> versus <code>undefined</code>?</strong> <code>undefined</code> means no value was put here. <code>null</code> means a value was put here on purpose and it is empty. Test missing objects with <code>=== null</code> or <code>== null</code> only when you mean both.</p>
+<p><strong>Which values are falsy?</strong> <code>false</code>, <code>0</code>, <code>""</code>, <code>null</code>, <code>undefined</code>, and <code>NaN</code>. An empty array is truthy. The text <code>"0"</code> is truthy.</p>
+<p><strong>What do <code>map</code>, <code>filter</code>, <code>find</code>, and <code>reduce</code> do?</strong> <code>map</code> builds a new list of the same length by transforming each item. <code>filter</code> builds a new list of the items that pass a test. <code>find</code> returns the first match or <code>undefined</code>. <code>reduce</code> carries one running result, such as a sum. None of them change the original list.</p>
+<p><strong>What is the difference between <code>slice</code> and <code>splice</code>?</strong> <code>slice</code> copies a section and leaves the array alone. <code>splice</code> inserts or deletes in the original array. React state wants the copying tools.</p>
+<p><strong>What do <code>?.</code> and <code>??</code> do?</strong> <code>user?.address?.city</code> stops if <code>user</code> or <code>address</code> is <code>null</code> or <code>undefined</code>. <code>value ?? 0</code> uses 0 only when <code>value</code> is <code>null</code> or <code>undefined</code>. It keeps <code>0</code> and <code>""</code>. <code>||</code> would replace those too.</p>
+<p><strong>Are arguments passed by value or by reference?</strong> The parameter sticker is stuck on the same object. Reassigning the parameter does not change the caller’s sticker. Mutating the object, such as <code>push</code>, is visible to the caller because there is one object.</p>
+<p><strong>What is a closure?</strong> A function that keeps using variables from the place it was created, after that outer function has returned. <code>makeAdder(5)</code> returns a function that still sees <code>5</code>.</p>
+<p><strong>What is <code>this</code>?</strong> For a normal method, it is the object before the dot at the call. Pull the method off the object and <code>this</code> is lost. An arrow function does not get its own <code>this</code>. It uses the <code>this</code> of the place it was written.</p>
+<p><strong>What is a Promise?</strong> An IOU for a later value or a failure. <code>await</code> pauses that function until the IOU settles and lets other code run. Without <code>await</code>, you hold the Promise, not the user. <code>try/catch</code> handles the failure.</p>
+<p><strong>What does this print: log A, <code>setTimeout</code> 0 logs B, a resolved promise logs C, log D?</strong> A, D, C, B. A and D run now. The promise callback is a microtask and runs before the timer. A timeout of 0 still waits until the stack is empty and the promise tray is empty.</p>
+<p><strong>Why does a long loop freeze the page?</strong> JavaScript runs one call stack. Clicks and timers run only when that stack is empty. A long loop never gives them a turn.</p>
+<p><strong>What is the difference between <code>localStorage</code> and <code>sessionStorage</code>?</strong> Both store strings for this site. <code>localStorage</code> survives closing the tab. <code>sessionStorage</code> lasts until the tab closes. Objects must go through <code>JSON.stringify</code> and <code>JSON.parse</code>. Do not store secrets there.</p>
+<p><strong>What is a default export versus a named export?</strong> A file has one default, imported without braces. Named exports are imported with braces and the same name: <code>import App, { add } from "./math.js"</code>.</p>
+
+<h2>React</h2>
+<p><strong>What is React?</strong> A library for describing the screen as a function of data. You change data with a setter. React calls the function again and updates the real page to match the new description. You do not hunt for a DOM node on each click.</p>
+<p><strong>What is a component?</strong> A function whose name starts with a capital letter and that returns JSX. <code>&lt;Hello /&gt;</code> means call that function. Lowercase tags are HTML.</p>
+<p><strong>What is JSX?</strong> A way to write element descriptions inside JavaScript. Curly braces jump back into JavaScript. It is compiled to function calls. <code>class</code> is written <code>className</code>. A multi-line return needs parentheses, or the function returns <code>undefined</code>.</p>
+<p><strong>What are props?</strong> Inputs a parent passes to a child. The child reads them and does not change them. <code>onClick={save}</code> passes the function. <code>onClick={save()}</code> calls it while rendering.</p>
+<p><strong>What is state?</strong> Memory React keeps between renders. <code>useState</code> returns the current value and a setter. Calling the setter stores the value and schedules a re-render. A normal variable inside the function starts over on every render.</p>
+<p><strong>Why didn’t the screen update?</strong> The data changed in a way React could not see. Either there was no setter, or the setter was given the same array or object after <code>push</code> or a field write. Pass a new array or object, usually with spread, <code>map</code>, or <code>filter</code>.</p>
+<p><strong>When do you use the function form of the setter?</strong> When the next value depends on the previous one, especially if several updates can pile up: <code>setCount((current) =&gt; current + 1)</code>.</p>
+<p><strong>What is a key?</strong> A stable id on each element returned from <code>map</code>, so React can match rows across renders. An array index breaks when the list is reordered or filtered, because the wrong row keeps the checkbox or the cursor.</p>
+<p><strong>What is a controlled input?</strong> The input’s <code>value</code> is state, and <code>onChange</code> writes that state. The screen and the data are the same string. <code>value</code> without <code>onChange</code> freezes the box.</p>
+<p><strong>What is <code>useEffect</code> for?</strong> Work that reaches outside rendering: fetch, timers, subscriptions. It runs after paint. The dependency list says when to run again. The function you return is the cleanup. Do not use an effect to copy one state into another. Compute that while rendering.</p>
+<p><strong>Why can an old fetch overwrite a new one?</strong> The request for id 1 can finish after the user has switched to id 2. Cleanup sets a flag, or aborts the request, so the late answer does not call the setter.</p>
+<p><strong>What are the rules of hooks?</strong> Call them at the top of a component or a custom hook, in the same order every render. Do not put them in a condition, a loop, or a nested function. Custom hooks start with <code>use</code>.</p>
+<p><strong>What is <code>useRef</code>?</strong> A box that survives renders. Changing <code>.current</code> does not redraw. Use it for a timer id or to focus an input. Do not hide the score there and expect the screen to change. The screen follows state.</p>
+<p><strong>What is <code>useReducer</code>?</strong> State plus a function <code>(state, action) =&gt; nextState</code>. The component dispatches named events such as add and toggle. The reducer owns the update rules. Use it when many events edit one value.</p>
+<p><strong>What do <code>useMemo</code> and <code>useCallback</code> do?</strong> They remember a value or a function until the listed inputs change. They help a measured slow calculation, or a <code>memo</code> child that should skip rendering when props are unchanged. A small filter does not need them.</p>
+<p><strong>What is context?</strong> A way to pass a widely needed value, such as theme or the current user, without handing it through every middle component. It is a poor home for every piece of state.</p>
+<p><strong>What is Redux?</strong> One store for shared state. The screen reads with <code>useSelector</code> and changes state by dispatching actions. Reducers return the next state. Redux Toolkit’s <code>createSlice</code> lets you write those reducers as if you mutated a draft. That permission exists only inside the slice. Start with <code>useState</code>. Move to a store when many distant screens edit the same model.</p>
+<p><strong>How does routing work?</strong> React Router matches the address to an element. <code>Link</code> changes the address without a full reload. <code>useParams</code> reads <code>:id</code> from the path. The value is a string.</p>
+<p><strong>What is an error boundary?</strong> A class component that catches a crash while a child is rendering and shows a fallback. Hooks cannot do that job. It does not catch errors inside event handlers. Those use <code>try/catch</code>.</p>
+<p><strong>How do you test a component?</strong> Render it, click or type the way a person would, and assert on the screen. Query by role and name. Do not assert on the private state variable.</p>
+<p><strong>What is a server component versus a client component in Next.js?</strong> A server component runs on the server, can await data there, and cannot use state, effects, or clicks. A client component is marked <code>"use client"</code> and is the React with hooks and events. Put that line on the smallest file that needs it.</p>
+
+<h2>Short coding answers</h2>
+<p><strong>Build a counter.</strong> <code>useState(0)</code>. The button’s text is <code>Clicked {count} times</code>. <code>onClick</code> calls <code>setCount((n) =&gt; n + 1)</code>.</p>
+<p><strong>Add an item to a list in state.</strong> <code>setItems((current) =&gt; [...current, item])</code>. Do not <code>push</code> and then set the same array.</p>
+<p><strong>Toggle one task.</strong> <code>setTasks((current) =&gt; current.map((task) =&gt; task.id === id ? { ...task, done: !task.done } : task))</code>.</p>
+<p><strong>Remove duplicates and keep order.</strong> Walk the list with a <code>Set</code> of values already returned, or use a filter with <code>indexOf</code>. A <code>Set</code> alone does not give you a React row until you spread it back to an array.</p>
+<pre>function unique(items) {
+  return [...new Set(items)];
+}</pre>
+<p><strong>Group items by a field.</strong> <code>reduce</code> into an object of arrays.</p>
+<pre>function groupBy(items, key) {
+  return items.reduce((groups, item) =&gt; {
+    const name = item[key];
+    groups[name] = groups[name] ?? [];
+    groups[name].push(item);
+    return groups;
+  }, {});
+}</pre>
+<p><strong>Save the task list across refresh.</strong> Initialize state from <code>localStorage</code> with the function form of <code>useState</code>. Write <code>JSON.stringify</code> in an effect that depends on the list. Store strings only.</p>
+
+<h2>How to practice</h2>
+<ol>
+<li>Cover the answer. Say yours in under a minute.</li>
+<li>Write the counter, the add, and the toggle from memory and run them.</li>
+<li>Explain the print order A, D, C, B without looking.</li>
+<li>Stop when a frozen input makes you say “controlled value without a setter” before you say “React is broken.”</li>
+</ol>
+<p class="end">End of the interview questions and answers.</p>

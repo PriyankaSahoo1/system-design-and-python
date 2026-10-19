@@ -1,0 +1,1027 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>JavaScript and React</title><style>
+  @page { size: A4; margin: 16mm 14mm 18mm 14mm; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: Georgia, "Times New Roman", serif; font-size: 11pt; line-height: 1.45; color: #1c1c1c; }
+  h1 { font-family: "Segoe UI", Calibri, sans-serif; font-size: 20pt; line-height: 1.25; margin: 18px 0 10px; page-break-before: always; }
+  h1.cover { page-break-before: avoid; font-size: 28pt; margin-top: 12px; }
+  h2 { font-family: "Segoe UI", Calibri, sans-serif; font-size: 14pt; margin: 16px 0 6px; page-break-after: avoid; }
+  p { margin: 0 0 8px; }
+  ul, ol { margin: 0 0 10px; padding-left: 20px; }
+  li { margin-bottom: 3px; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0 12px; font-size: 10pt; page-break-inside: avoid; }
+  th, td { border: 1px solid #c8c8c8; padding: 4px 6px; vertical-align: top; text-align: left; }
+  th { background: #f2f2f2; font-family: "Segoe UI", Calibri, sans-serif; }
+  pre { font-family: Consolas, "Courier New", monospace; font-size: 8.5pt; line-height: 1.35; background: #f6f6f6; padding: 8px 10px; white-space: pre-wrap; page-break-inside: avoid; }
+  code { font-family: Consolas, "Courier New", monospace; font-size: 9.5pt; }
+  .subtitle { font-size: 13pt; margin-top: 0; }
+  .toc { columns: 2; column-gap: 24px; }
+  .end { margin-top: 16px; }
+</style></head><body>
+<h1 class="cover">JavaScript and React</h1>
+<p class="subtitle">Everything you need, explained the way a careful kid would want it. With examples.</p>
+<p>You already understand ideas. The hard part is the words. This book gives each word a picture, then a tiny program, then the sentence people say in real work. Read it in order. JavaScript comes first, because React is JavaScript with a rule for drawing the screen.</p>
+<p>A concept is yours when you can hide the example, write it again, and say what the screen or the number will be before you run it.</p>
+
+<h2>Contents</h2>
+<ol class="toc">
+<li>The four jobs on a web page</li>
+<li>Values, names, and types</li>
+<li>Decisions and repetition</li>
+<li>Functions</li>
+<li>Lists and labeled boxes</li>
+<li>The page and clicks</li>
+<li>Waiting without freezing</li>
+<li>What React is</li>
+<li>Components and JSX</li>
+<li>Props: inputs to a brick</li>
+<li>State: memory that redraws</li>
+<li>Lists, choices, and forms</li>
+<li>Effects: work after the drawing</li>
+<li>How data moves</li>
+<li>One small app, line by line</li>
+<li>Why React feels broken</li>
+<li>Glossary and a study plan</li>
+<li>More of the language</li>
+<li>Classes, this, and modules</li>
+<li>The event loop</li>
+<li>The rest of React’s memory</li>
+<li>Pages, stores, style, and tests</li>
+<li>Next.js and the full map</li>
+<li>Interview questions and answers</li>
+</ol>
+
+<h1>1. The four jobs on a web page</h1>
+<p>A page in the browser is four jobs living together.</p>
+<ul>
+<li><strong>HTML</strong> is the nouns. A heading, a button, a list. It says what exists.</li>
+<li><strong>CSS</strong> is the clothes and the chairs. Color, size, and where things sit.</li>
+<li><strong>JavaScript</strong> is the behavior. When someone clicks, JavaScript decides what happens next.</li>
+<li><strong>React</strong> is a way to write that behavior so the screen is always a picture of your data. You describe the picture. React updates the page.</li>
+</ul>
+<p>JavaScript also runs outside the browser, in a program called Node. The language is the same. The browser adds the page and the mouse. Node adds files and servers. This book teaches the language first, then the browser just enough, then React.</p>
+<p>You can try a line in the browser: open any page, press F12, choose Console, and type <code>2 + 2</code>. The answer <code>4</code> is JavaScript. For React you will later use a project tool. You do not need that tool to understand the ideas.</p>
+
+<h1>2. Values, names, and types</h1>
+<p>A <strong>value</strong> is a thing the program can hold: a number, some text, yes-or-no, a list. A <strong>name</strong> is a sticker on that thing. In JavaScript the sticker words are <code>const</code> and <code>let</code>.</p>
+<pre>const name = "Priya";
+let score = 9;
+score = score + 1;</pre>
+<p><code>const</code> means “this sticker stays on this thing.” You cannot write <code>name = "Anu"</code> later. <code>let</code> means the sticker can move to a new thing. Use <code>const</code> unless you know the sticker must move. An old word, <code>var</code>, also makes stickers, but it leaks out of blocks in surprising ways. Leave it alone.</p>
+<p>The important types:</p>
+<table>
+<tr><th>Type</th><th>Example</th><th>Meaning</th></tr>
+<tr><td>number</td><td><code>3</code>, <code>1.5</code></td><td>A number. There is one number type, not separate whole-number and decimal types.</td></tr>
+<tr><td>string</td><td><code>"hi"</code></td><td>Text. Quotes can be single, double, or backticks.</td></tr>
+<tr><td>boolean</td><td><code>true</code>, <code>false</code></td><td>Yes or no.</td></tr>
+<tr><td>undefined</td><td><code>undefined</code></td><td>“Nobody put a value here.”</td></tr>
+<tr><td>null</td><td><code>null</code></td><td>“A value is here on purpose, and it is empty.”</td></tr>
+<tr><td>object</td><td><code>{ city: "Pune" }</code></td><td>A box of labeled values.</td></tr>
+<tr><td>array</td><td><code>[1, 2, 3]</code></td><td>A list. Arrays are a kind of object.</td></tr>
+</table>
+<p><code>null</code> is a choice you make: “no user.” <code>undefined</code> is what you get when you ask for a name that was never given a value, or a missing list slot.</p>
+<p>Text can include a calculation by using backticks and <code>${ }</code>. That is a template string.</p>
+<pre>const name = "Priya";
+const score = 10;
+const line = `${name} scored ${score}`;</pre>
+<p>Compare with <code>===</code> and <code>!==</code>. Those check the value and the type. <code>==</code> tries to convert types first, so <code>"5" == 5</code> is true and <code>"5" === 5</code> is false. Use <code>===</code>. The surprise conversions are how quiet bugs start.</p>
+<pre>console.log(1 + "2");   // "12"  number becomes text and they join
+console.log(1 + 2);     // 3</pre>
+<p><code>console.log</code> prints to the console so you can see a value. It is the flashlight. It is not the product.</p>
+<p>A <code>const</code> object can still change inside. The sticker cannot move. The stuff in the box can.</p>
+<pre>const user = { city: "Pune" };
+user.city = "Mumbai";     // allowed
+// user = { city: "Goa" }; // not allowed with const</pre>
+
+<h1>3. Decisions and repetition</h1>
+<p>An <code>if</code> runs a block only when a test is true. <code>else if</code> is the next test. <code>else</code> is “none of those.”</p>
+<pre>let grade;
+if (score &gt;= 90) {
+  grade = "A";
+} else if (score &gt;= 80) {
+  grade = "B";
+} else {
+  grade = "keep going";
+}</pre>
+<p>These values count as false in a test: <code>false</code>, <code>0</code>, <code>""</code>, <code>null</code>, <code>undefined</code>, and <code>NaN</code> (a number that means “not a number,” often from bad math). Everything else counts as true, including the text <code>"0"</code> and an empty list. An empty list is true. That surprises people.</p>
+<p>A <code>for</code> loop repeats. This one walks indexes <code>0</code>, <code>1</code>, and <code>2</code>.</p>
+<pre>const colors = ["red", "blue", "green"];
+for (let i = 0; i &lt; colors.length; i++) {
+  console.log(colors[i]);
+}</pre>
+<p><code>for...of</code> walks the items and is usually what you want.</p>
+<pre>for (const color of colors) {
+  console.log(color);
+}</pre>
+<p><code>while</code> repeats as long as a test stays true. If nothing inside the loop makes the test false, it never ends. That is an infinite loop. The page freezes because JavaScript in the browser does one job at a time on the main path.</p>
+
+<h1>4. Functions</h1>
+<p>A function is a named recipe. You define it once. You call it whenever you want that result. <code>return</code> sends a value back and stops the function. No <code>return</code> means the function gives back <code>undefined</code>.</p>
+<pre>function clamp(n, low, high) {
+  if (n &lt; low) return low;
+  if (n &gt; high) return high;
+  return n;
+}
+clamp(12, 0, 10);   // 10</pre>
+<p>An arrow function is the same idea written shorter. It is the form React uses most.</p>
+<pre>const clamp = (n, low, high) =&gt; {
+  if (n &lt; low) return low;
+  if (n &gt; high) return high;
+  return n;
+};</pre>
+<p>When the body is one expression, you can skip the braces and the word <code>return</code>.</p>
+<pre>const double = (n) =&gt; n * 2;</pre>
+<p>Parameters are the blanks in the recipe. Arguments are the values you fill in at the call. Extra arguments are ignored. Missing ones are <code>undefined</code>.</p>
+<p>A function can see names outside itself. That outside memory is a <strong>closure</strong>. The inner function keeps using <code>step</code> even after <code>makeAdder</code> has finished.</p>
+<pre>function makeAdder(step) {
+  return (n) =&gt; n + step;
+}
+const add5 = makeAdder(5);
+add5(2);   // 7</pre>
+<p>Think of <code>makeAdder(5)</code> as a machine that was built already holding the number 5.</p>
+<p>Functions are values. You can put one in a variable, pass it to another function, or return it. React does this all day: a component is a function, and an event handler is a function you hand to a button.</p>
+
+<h1>5. Lists and labeled boxes</h1>
+<p>An array is a list. The first item is index <code>0</code>. <code>length</code> is how many items. <code>push</code> adds at the end and changes the list. That change-in-place matters later, because React wants new lists, not secret edits.</p>
+<pre>const nums = [10, 20, 30];
+nums[0];          // 10
+nums.push(40);    // nums is now [10, 20, 30, 40]</pre>
+<p>Three methods do most list work. Each one takes a function and does not change the original list. They return something new.</p>
+<pre>const nums = [1, 2, 3, 4];
+
+const doubled = nums.map((n) =&gt; n * 2);
+// [2, 4, 6, 8]
+
+const big = nums.filter((n) =&gt; n &gt;= 3);
+// [3, 4]
+
+const found = nums.find((n) =&gt; n &gt; 2);
+// 3, the first match, or undefined</pre>
+<p><code>map</code> means “turn every item into a new item, same count.” <code>filter</code> means “keep the items that pass the test.” <code>find</code> means “give me the first match.” React lists are almost always a <code>map</code>.</p>
+<p>An object is a box of labels.</p>
+<pre>const book = { title: "Raft", pages: 80 };
+book.title;                 // "Raft"
+book["pages"];              // 80
+const copy = { ...book, pages: 90 };</pre>
+<p><code>...book</code> is the spread. It copies the labels into a new box. <code>copy</code> is a new object. <code>book</code> still has 80 pages. This is the safe way to “change” data in React: copy, then override the one label that changed.</p>
+<p>You can pull labels out into names. That is destructuring.</p>
+<pre>const { title, pages } = book;
+const [first, second] = [10, 20];</pre>
+<p>Arrays and objects are compared by identity, not by looking inside. Two lists with the same numbers are not <code>===</code>. They are two boxes.</p>
+<pre>const a = [1, 2];
+const b = [1, 2];
+console.log(a === b);   // false</pre>
+
+<h1>6. The page and clicks</h1>
+<p>The browser turns HTML into a tree of objects called the <strong>DOM</strong>, the document object model. JavaScript can find a node and change it.</p>
+<pre>&lt;button id="save"&gt;Save&lt;/button&gt;
+&lt;p id="message"&gt;&lt;/p&gt;
+
+&lt;script&gt;
+  const button = document.querySelector("#save");
+  const message = document.querySelector("#message");
+  button.addEventListener("click", () =&gt; {
+    message.textContent = "Saved";
+  });
+&lt;/script&gt;</pre>
+<p><code>document.querySelector</code> finds the first matching piece. <code>addEventListener</code> says “when this happens, run this function.” The function is the handler. <code>textContent</code> sets the words. This is real and useful. It is also how pages become a tangle: every handler reaches into the page and edits whatever it wants. React exists so you stop doing that by hand.</p>
+<p>You still need this picture. React’s job is to be the person who edits the DOM for you, after you describe the screen.</p>
+
+<h1>7. Waiting without freezing</h1>
+<p>Some work is not finished on this line: loading a user from the network, waiting one second, reading a file. If the browser waited with its arms folded, the page could not scroll. So JavaScript starts the slow job and keeps going. The result arrives later.</p>
+<p>A <strong>Promise</strong> is an IOU. It will become a value, or it will fail. <code>async</code> and <code>await</code> let you write the waiting in a straight line.</p>
+<pre>async function loadUser(id) {
+  const response = await fetch(`/users/${id}`);
+  if (!response.ok) {
+    throw new Error("Could not load user");
+  }
+  return response.json();
+}</pre>
+<p>Read it as: “Pause this function until <code>fetch</code> finishes. Other code on the page may run while we pause. Then continue on the next line.” <code>fetch</code> is the browser’s way to ask a server for data. <code>response.json()</code> reads the answer as data.</p>
+<p><code>try</code> and <code>catch</code> hold a failure so the whole page does not crash.</p>
+<pre>async function show() {
+  try {
+    const user = await loadUser(3);
+    console.log(user.name);
+  } catch (error) {
+    console.log(error.message);
+  }
+}</pre>
+<p>The mistake is to treat the IOU as the value. <code>loadUser(3)</code> without <code>await</code> is a Promise, not a user. You cannot read <code>.name</code> on it yet.</p>
+
+<h1>8. What React is</h1>
+<p>React is a library for building a screen out of functions. Each function returns a description of a piece of the page. When the data changes, you call the function again and get a new description. React looks at the new description and the old one and updates only the parts of the real page that differ.</p>
+<p>The picture in your head:</p>
+<ol>
+<li>Data sits in memory. A score is <code>0</code>.</li>
+<li>A function reads that data and says “show a paragraph with 0 and a button.”</li>
+<li>Someone clicks.</li>
+<li>You replace the score with <code>1</code> using React’s setter, not by quiet assignment.</li>
+<li>React calls the function again. Now it says “show a paragraph with 1.”</li>
+<li>React changes the paragraph on the real page.</li>
+</ol>
+<p>You do not hunt for the paragraph and edit it. You change the data, and the function is the rule for the picture. That rule is the whole trick. People struggle when they still try to edit the page the old way, or when they change data in a way React cannot see.</p>
+<p>A <strong>component</strong> is one of those functions. A <strong>re-render</strong> is React calling it again. A <strong>hook</strong> is a function whose name starts with <code>use</code>, such as <code>useState</code>. Hooks are how a function keeps memory between calls. You call hooks at the top of the component, not inside an <code>if</code>, so React can match each memory slot to the same call every time.</p>
+
+<h1>9. Components and JSX</h1>
+<p>JSX looks like HTML inside JavaScript. It is not HTML. It is a way to write “this element, with these settings, with these children.” A tool turns it into function calls before the browser runs it. You write the readable form.</p>
+<pre>function Hello() {
+  const name = "Priya";
+  return &lt;h1&gt;Hello, {name}&lt;/h1&gt;;
+}</pre>
+<p>Curly braces jump from “tag land” back into JavaScript. <code>{name}</code> prints the value. A component name starts with a capital letter. <code>&lt;Hello /&gt;</code> means “call this component.” <code>&lt;h1&gt;</code> means a real heading. Lowercase tags are HTML. Capitalized tags are your functions.</p>
+<p>One component returns one parent. If you need two siblings, wrap them. An empty wrap <code>&lt;&gt;...&lt;/&gt;</code> does not add an extra box on the page.</p>
+<pre>function Header() {
+  return (
+    &lt;&gt;
+      &lt;h1&gt;Notes&lt;/h1&gt;
+      &lt;p&gt;A small list&lt;/p&gt;
+    &lt;/&gt;
+  );
+}</pre>
+<p>The parentheses let the return stretch over several lines. Without them, JavaScript would return <code>undefined</code> and ignore the next lines. That bug looks like a blank screen.</p>
+<p>Write a real attribute as <code>className</code>, not <code>class</code>, because <code>class</code> is a JavaScript word. Write <code>htmlFor</code> instead of <code>for</code> on a label. Close every tag. A comment inside JSX is <code>{/* like this */}</code>.</p>
+<p>JavaScript expressions are allowed in the braces. Statements such as <code>if</code> are not. You compute the value above the return, or you use a conditional expression.</p>
+<pre>function Status({ ready }) {
+  return &lt;p&gt;{ready ? "Ready" : "Loading"}&lt;/p&gt;;
+}</pre>
+
+<h1>10. Props: inputs to a brick</h1>
+<p><strong>Props</strong> are the inputs a parent passes to a child. The child reads them. The child does not change them. Think of a rubber stamp: the parent sets the words, the child presses them onto the page.</p>
+<pre>function Greeting({ name }) {
+  return &lt;p&gt;Hello, {name}&lt;/p&gt;;
+}
+
+function App() {
+  return &lt;Greeting name="Priya" /&gt;;
+}</pre>
+<p><code>{ name }</code> pulls <code>name</code> out of the props object. This is the same as:</p>
+<pre>function Greeting(props) {
+  return &lt;p&gt;Hello, {props.name}&lt;/p&gt;;
+}</pre>
+<p>A prop can be any value: a number, a list, or a function.</p>
+<pre>function SaveButton({ onSave }) {
+  return &lt;button onClick={onSave}&gt;Save&lt;/button&gt;;
+}</pre>
+<p><code>onClick={onSave}</code> passes the function. <code>onClick={onSave()}</code> calls it immediately while drawing, which is almost never what you want. The parentheses mean “do it now.” Without parentheses, you hand over the recipe and the click does it later.</p>
+<p>Whatever you put between an opening tag and a closing tag arrives as <code>children</code>.</p>
+<pre>function Card({ children }) {
+  return &lt;section className="card"&gt;{children}&lt;/section&gt;;
+}
+
+function App() {
+  return (
+    &lt;Card&gt;
+      &lt;h2&gt;Today&lt;/h2&gt;
+    &lt;/Card&gt;
+  );
+}</pre>
+
+<h1>11. State: memory that redraws</h1>
+<p>Ordinary variables forget, in a way that matters. Every re-render calls your function from the top. A <code>let score = 0</code> inside the function starts at 0 again. <strong>State</strong> is memory React keeps for you between those calls.</p>
+<pre>import { useState } from "react";
+
+function Counter() {
+  const [count, setCount] = useState(0);
+
+  function increment() {
+    setCount(count + 1);
+  }
+
+  return (
+    &lt;button onClick={increment}&gt;
+      Clicked {count} times
+    &lt;/button&gt;
+  );
+}</pre>
+<p>Read <code>useState(0)</code> as “remember a number, starting at 0.” It returns a pair: the current value, and a setter. The names <code>count</code> and <code>setCount</code> are a custom. Calling <code>setCount</code> does two things: it stores the new number, and it asks React to call <code>Counter</code> again. The button’s text changes because the function returns new text, not because you edited the button.</p>
+<p>This does not redraw:</p>
+<pre>count = count + 1;          // if count were a let, still the wrong idea
+// or
+count++;                    // you cannot assign to count from useState</pre>
+<p>The screen follows the setter. If you change a value and React did not see the setter, the picture stays old. That single rule explains most “I updated it but nothing happened.”</p>
+<p>When the next value depends on the previous one, and several updates might pile up, pass a function to the setter.</p>
+<pre>setCount((current) =&gt; current + 1);</pre>
+<p>React will give that function the latest stored count. Use this form for clicks that add one. Use <code>setCount(next)</code> when you already know the whole next value, such as clearing to 0 or storing what was typed.</p>
+<p>State can be a list or an object. Replace the whole value with a new one. Do not <code>push</code> into the old list and expect a redraw. <code>push</code> edits the box in place, and React may look at it and think nothing changed, because the box is the same box.</p>
+<pre>function addTodo(text) {
+  setTodos((current) =&gt; [
+    ...current,
+    { id: crypto.randomUUID(), text, done: false },
+  ]);
+}</pre>
+<p>The spread <code>...current</code> copies the old items into a new array, then the new item is added at the end. New array, so React can see the change.</p>
+<p>State belongs to the component that needs to change it, or to the closest parent of the children that must share it. Putting every value in one giant state works and becomes muddy. Putting a copy of the same fact in two states lets them disagree. One fact, one home.</p>
+
+<h1>12. Lists, choices, and forms</h1>
+<p>To show a list, <code>map</code> data into elements. Each element needs a <code>key</code> that is stable for that item. React uses the key to match “this row last time” with “this row this time” when the list is reordered or filtered. The key goes on the element you return from <code>map</code>, and it is not a prop your component reads unless you also pass it under another name.</p>
+<pre>function TodoList({ todos }) {
+  return (
+    &lt;ul&gt;
+      {todos.map((todo) =&gt; (
+        &lt;li key={todo.id}&gt;{todo.text}&lt;/li&gt;
+      ))}
+    &lt;/ul&gt;
+  );
+}</pre>
+<p>Use an id from the data. Using the array index as the key looks fine until you delete or reorder, and then the wrong row keeps the cursor or the checkbox. An index key is acceptable only for a list that never changes order.</p>
+<p>Show or hide by choosing what to return. <code>&amp;&amp;</code> is a shortcut: when the left side is false, React renders nothing for that spot.</p>
+<pre>function Warning({ count }) {
+  return (
+    &lt;div&gt;
+      {count === 0 &amp;&amp; &lt;p&gt;Add your first task.&lt;/p&gt;}
+      {count &gt; 0 &amp;&amp; &lt;p&gt;{count} tasks&lt;/p&gt;}
+    &lt;/div&gt;
+  );
+}</pre>
+<p>Do not use <code>count &amp;&amp; ...</code> when <code>count</code> might be <code>0</code>. Zero is false, and React will print the <code>0</code> on the page. Compare with <code>===</code> or use a ternary.</p>
+<p>A form field that shows state and writes state on every change is a <strong>controlled input</strong>. The input does not keep a secret copy. The picture and the data are the same string.</p>
+<pre>function NameField() {
+  const [name, setName] = useState("");
+
+  return (
+    &lt;label&gt;
+      Name
+      &lt;input
+        value={name}
+        onChange={(event) =&gt; setName(event.target.value)}
+      /&gt;
+    &lt;/label&gt;
+  );
+}</pre>
+<p><code>event.target</code> is the input element. <code>value</code> is what is in it right now. You store that string. On the next draw, <code>value={name}</code> puts it back. If you set <code>value</code> and forget <code>onChange</code>, the input is frozen, because every keystroke is thrown away and the old state is written back.</p>
+<p>Submitting a form: call <code>event.preventDefault()</code> so the browser does not reload the page. Then use the state you already have.</p>
+<pre>function onSubmit(event) {
+  event.preventDefault();
+  addTodo(name);
+  setName("");
+}</pre>
+
+<h1>13. Effects: work after the drawing</h1>
+<p>Rendering should be a pure description: same data in, same picture out, no fetching, no writing to the page by hand. Work that reaches outside that description is an <strong>effect</strong>: fetching, a timer, a subscription. <code>useEffect</code> runs that work after React has painted.</p>
+<pre>import { useEffect, useState } from "react";
+
+function UserCard({ id }) {
+  const [user, setUser] = useState(null);
+
+  useEffect(() =&gt; {
+    let ignore = false;
+
+    async function load() {
+      const response = await fetch(`/users/${id}`);
+      const data = await response.json();
+      if (!ignore) setUser(data);
+    }
+
+    load();
+    return () =&gt; {
+      ignore = true;
+    };
+  }, [id]);
+
+  if (user === null) return &lt;p&gt;Loading...&lt;/p&gt;;
+  return &lt;p&gt;{user.name}&lt;/p&gt;;
+}</pre>
+<p>The list at the end, <code>[id]</code>, means “run again when <code>id</code> changes.” An empty list <code>[]</code> means “run after the first paint only.” No list means “run after every paint,” which is usually a bug.</p>
+<p>The function you return is a cleanup. React calls it before running the effect again, and when the component leaves the screen. The <code>ignore</code> flag matters because a slow answer for user 1 can arrive after you have already switched to user 2. Without the flag, user 1’s name would overwrite user 2.</p>
+<p>You do not need an effect to compute something from state. If <code>fullName</code> is <code>first + " " + last</code>, compute it while rendering. An effect that only copies one state into another state is extra memory that can disagree with itself.</p>
+<p><code>useRef</code> is a box that survives re-renders and does not cause a re-render when you change <code>.current</code>. Use it for a timer id, or for remembering the DOM node when you truly must. Do not hide the score in a ref and then wonder why the screen is stale. The screen follows state.</p>
+
+<h1>14. How data moves</h1>
+<p>Data in React flows down. A parent passes props to children. Children do not reach up and edit the parent’s variables. If a child must change the parent’s state, the parent passes down a function.</p>
+<pre>function App() {
+  const [query, setQuery] = useState("");
+  return (
+    &lt;&gt;
+      &lt;SearchBox query={query} onChange={setQuery} /&gt;
+      &lt;Results query={query} /&gt;
+    &lt;/&gt;
+  );
+}</pre>
+<p>Both children see the same <code>query</code> because it lives once, in <code>App</code>. <code>SearchBox</code> calls <code>onChange</code>, which is <code>setQuery</code>. That is lifting state: the state sits above everyone who needs it.</p>
+<p>Passing a value through many layers that do not use it is prop drilling. It is clumsy and it is still correct. When many distant components need the same value, <strong>context</strong> is a pipe that skips the middle layers.</p>
+<pre>import { createContext, useContext, useState } from "react";
+
+const ThemeContext = createContext("light");
+
+function App() {
+  const [theme, setTheme] = useState("light");
+  return (
+    &lt;ThemeContext.Provider value={theme}&gt;
+      &lt;Toolbar onToggle={() =&gt; setTheme(theme === "light" ? "dark" : "light")} /&gt;
+    &lt;/ThemeContext.Provider&gt;
+  );
+}
+
+function Panel() {
+  const theme = useContext(ThemeContext);
+  return &lt;section className={theme}&gt;Body&lt;/section&gt;;
+}</pre>
+<p><code>Panel</code> can sit deep under <code>Toolbar</code> and still read <code>theme</code>. Context is for data that is widely needed: theme, the signed-in user, the language. It is a poor place for every piece of state. A todo’s text still belongs next to the list.</p>
+<p>One-way flow is the reason bugs are findable. If the screen is wrong, look at the state that feeds it, then at the function that set it, then at the click that called that function. You do not search the whole page for someone who edited a paragraph.</p>
+
+<h1>15. One small app, line by line</h1>
+<p>This is a task list. You can type a task, add it, and mark it done. Every idea from the React chapters is in here, and nothing else. Read it once as a story, then once as code.</p>
+<pre>import { useState } from "react";
+
+function App() {
+  const [text, setText] = useState("");
+  const [tasks, setTasks] = useState([]);
+
+  function addTask(event) {
+    event.preventDefault();
+    const title = text.trim();
+    if (title === "") return;
+    setTasks((current) =&gt; [
+      ...current,
+      { id: crypto.randomUUID(), title, done: false },
+    ]);
+    setText("");
+  }
+
+  function toggleTask(id) {
+    setTasks((current) =&gt;
+      current.map((task) =&gt;
+        task.id === id ? { ...task, done: !task.done } : task
+      )
+    );
+  }
+
+  const remaining = tasks.filter((task) =&gt; !task.done).length;
+
+  return (
+    &lt;&gt;
+      &lt;h1&gt;Tasks&lt;/h1&gt;
+      &lt;form onSubmit={addTask}&gt;
+        &lt;input
+          value={text}
+          onChange={(event) =&gt; setText(event.target.value)}
+          placeholder="Add a task"
+        /&gt;
+        &lt;button&gt;Add&lt;/button&gt;
+      &lt;/form&gt;
+      &lt;p&gt;{remaining} left&lt;/p&gt;
+      &lt;ul&gt;
+        {tasks.map((task) =&gt; (
+          &lt;li key={task.id}&gt;
+            &lt;label&gt;
+              &lt;input
+                type="checkbox"
+                checked={task.done}
+                onChange={() =&gt; toggleTask(task.id)}
+              /&gt;
+              {task.title}
+            &lt;/label&gt;
+          &lt;/li&gt;
+        ))}
+      &lt;/ul&gt;
+    &lt;/&gt;
+  );
+}
+
+export default App;</pre>
+<p>What each piece is doing:</p>
+<ul>
+<li><code>text</code> is the draft in the box. It changes on every keystroke. It is not a task yet.</li>
+<li><code>tasks</code> is the list. It starts empty.</li>
+<li><code>addTask</code> stops the page reload, ignores blank text, and stores a new array that ends with the new task. Then it clears the box.</li>
+<li><code>toggleTask</code> builds a new array. The matching task is a new object with <code>done</code> flipped. The other tasks are the same objects, which is fine, because they did not change.</li>
+<li><code>remaining</code> is calculated while drawing. It is not a third piece of state. It cannot drift away from the list.</li>
+<li>The checkbox uses <code>checked={task.done}</code>, so the screen is a picture of the data. Clicking calls <code>toggleTask</code>, which changes the data, which draws the screen again.</li>
+</ul>
+<p>A project created with Vite gives you a file <code>src/App.jsx</code> where this function lives, and a <code>main.jsx</code> that starts React:</p>
+<pre>import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import App from "./App.jsx";
+
+createRoot(document.querySelector("#root")).render(
+  &lt;StrictMode&gt;
+    &lt;App /&gt;
+  &lt;/StrictMode&gt;
+);</pre>
+<p><code>#root</code> is an empty element in <code>index.html</code>. React draws <code>App</code> inside it. <code>StrictMode</code> in development renders twice on purpose, so accidental side effects show themselves. That double call is not a bug in your counter.</p>
+<p>To run it on your machine, in a new folder:</p>
+<pre>npm create vite@latest tasks -- --template react
+cd tasks
+npm install
+npm run dev</pre>
+<p>Replace the contents of <code>src/App.jsx</code> with the task list. The terminal prints a local address, usually <code>http://localhost:5173</code>. Open it. The browser has the page. You do not need the internet after the install has finished, until you want another library.</p>
+
+<h2>The same counter in plain JavaScript</h2>
+<p>This is the version people write before React. It is correct. It is also the habit React asks you to leave.</p>
+<pre>let count = 0;
+const button = document.querySelector("#count");
+button.addEventListener("click", () =&gt; {
+  count = count + 1;
+  button.textContent = `Clicked ${count} times`;
+});</pre>
+<p>The data lives in <code>count</code>. The screen is updated by a separate line that knows about the button. If a second place also shows the count, you must remember to update that place too. React’s version has one line that describes the button, and the setter is the only update. Add another <code>{count}</code> anywhere in the component and it stays in step, because both spots are drawn from the same memory.</p>
+
+<h1>16. Why React feels broken</h1>
+<p>These are the moments that feel like React “doesn’t work.” Each one is the picture rule or the hook rule.</p>
+<ul>
+<li><strong>I changed the variable and the screen stayed.</strong> You assigned a value. Call the setter from <code>useState</code>.</li>
+<li><strong>I pushed into the array and the screen stayed.</strong> <code>push</code> edits the old array. Pass a new array to the setter, usually with <code>[...old, item]</code> or <code>map</code>.</li>
+<li><strong>The input will not type.</strong> It has <code>value={text}</code> and the <code>onChange</code> does not call <code>setText</code>.</li>
+<li><strong>The click ran while the page was loading.</strong> You wrote <code>onClick={save()}</code>. Pass <code>onClick={save}</code> or <code>onClick={() =&gt; save(id)}</code>.</li>
+<li><strong>A list item shows the wrong checkbox after a delete.</strong> The <code>key</code> was the array index. Use a stable id.</li>
+<li><strong>An effect runs forever.</strong> The effect sets state, and that state is not listed carefully, or the effect has no dependency list and sets state every time. Fetching in render, outside <code>useEffect</code>, does the same thing: render, set state, render, set state.</li>
+<li><strong>An old fetch overwrites a new one.</strong> Ignore answers after cleanup, as in the user card.</li>
+<li><strong>The screen is blank and there is no error you noticed.</strong> The component returned nothing, often because <code>return</code> and the JSX were on separate lines without parentheses.</li>
+<li><strong>A number 0 appears on the page.</strong> <code>{count &amp;&amp; &lt;p&gt;...&lt;/p&gt;}</code> prints <code>0</code> when the count is zero. Use a comparison.</li>
+<li><strong>Hooks crash with “rendered more hooks than previous.”</strong> A <code>useState</code> or <code>useEffect</code> is inside an <code>if</code>. Keep every hook at the top, before any return.</li>
+<li><strong>Two components each have a copy of the list and they disagree.</strong> Lift the list to the parent and pass it down.</li>
+</ul>
+<p>When you are stuck, say the data out loud. “The tasks array is the truth. The checkbox is a picture of <code>task.done</code>. The click must call a setter with a new array.” If you cannot point at the setter, the screen cannot change.</p>
+
+<h2>A handful of JavaScript slips that look like React</h2>
+<ul>
+<li><code>=</code> assigns. <code>===</code> compares. <code>if (count = 1)</code> assigns 1 and is always true.</li>
+<li><code>const</code> blocks a new assignment. It does not freeze the inside of an object.</li>
+<li><code>map</code> does not edit the original. If you forget to use the array it returns, it looks like nothing happened.</li>
+<li>Forgetting <code>await</code> leaves you holding a Promise. Reading <code>.name</code> on it is <code>undefined</code>.</li>
+<li>A function created inside a loop, or a handler, sees the variables from that render. That is a closure, and it is why a stale <code>count</code> shows up if you read it inside a timeout that was started long ago. The setter function form avoids that for state updates.</li>
+</ul>
+
+<h1>17. Glossary and a study plan</h1>
+<table>
+<tr><th>Word</th><th>The picture</th></tr>
+<tr><td>Value</td><td>A number, text, list, or other thing the program holds</td></tr>
+<tr><td>const / let</td><td>A sticker. const stays. let can be moved to a new value</td></tr>
+<tr><td>Function</td><td>A recipe you can run whenever you want</td></tr>
+<tr><td>Array</td><td>A list. Index 0 is the first item</td></tr>
+<tr><td>Object</td><td>A box of labeled values</td></tr>
+<tr><td>map / filter</td><td>Build a new list by transforming, or by keeping some items</td></tr>
+<tr><td>Spread</td><td>Copy the inside of an array or object into a new one</td></tr>
+<tr><td>DOM</td><td>The browser’s tree of the real page</td></tr>
+<tr><td>Promise</td><td>An IOU for a value that arrives later</td></tr>
+<tr><td>Component</td><td>A function that returns a description of part of the screen</td></tr>
+<tr><td>JSX</td><td>The HTML-looking way to write that description</td></tr>
+<tr><td>Props</td><td>Inputs a parent gives a child. The child only reads them</td></tr>
+<tr><td>State</td><td>Memory React keeps. Changing it with the setter redraws</td></tr>
+<tr><td>Re-render</td><td>React calling your component again to get a new description</td></tr>
+<tr><td>Key</td><td>A stable name so React can track a row in a list</td></tr>
+<tr><td>Effect</td><td>Work that talks to the outside, run after the picture is drawn</td></tr>
+<tr><td>Context</td><td>A value available to descendants without passing it through every middle component</td></tr>
+</table>
+
+<h2>Eight short sessions</h2>
+<ol>
+<li>In the browser console, make a <code>const</code> object, change a field, and try to reassign the name. Say which one worked.</li>
+<li>Write <code>map</code> and <code>filter</code> on a list of three tasks. Predict the new arrays before you log them.</li>
+<li>Build the plain JavaScript counter with a button. Watch the separate line that edits the button.</li>
+<li>Start the Vite task app and get the task list on screen. Add one task. Refresh and notice the list is gone. That is state living only in memory, which is expected.</li>
+<li>Mark a task done. Point at the new object created by the spread. Say why <code>task.done = true</code> would be the wrong edit.</li>
+<li>Add the “remaining” count in a second place on the page. Do not add new state.</li>
+<li>Add <code>useEffect</code> that logs <code>tasks</code> whenever the list changes. Then remove it if you do not need the log. Feel the difference between drawing and an effect.</li>
+<li>Break the input on purpose by deleting <code>onChange</code>. See the freeze. Put <code>onChange</code> back. That feeling is you understanding controlled inputs.</li>
+</ol>
+<p>You know this half when you can build the task list from a blank <code>App</code> function without looking, and when a frozen screen makes you ask “where is the setter?” before you ask “what is wrong with React?” The rest of the map, from <code>reduce</code> and the event loop through the router, Redux, tests, and Next.js, is in the following chapters.</p>
+
+<h1>18. More of the language</h1>
+<p>These are the tools you meet in real files after the basics feel familiar. Each one removes a kind of clumsiness.</p>
+
+<h2>Defaults, rest, and safe looking</h2>
+<pre>function greet(name = "guest") {
+  return `Hello, ${name}`;
+}
+
+function total(...nums) {
+  return nums.reduce((sum, n) =&gt; sum + n, 0);
+}
+total(1, 2, 3);   // 6</pre>
+<p>A default fills in when the caller passes nothing or passes <code>undefined</code>. <code>...nums</code> packs every argument into an array. That is the rest parameter.</p>
+<p>Optional chaining <code>?.</code> stops the lookup when the value is <code>null</code> or <code>undefined</code>, instead of crashing.</p>
+<pre>const city = user?.address?.city;</pre>
+<p>If <code>user</code> is missing, or <code>address</code> is missing, <code>city</code> is <code>undefined</code>. You did not have to write three <code>if</code> statements.</p>
+<p><code>??</code> means “use the right side only when the left side is <code>null</code> or <code>undefined</code>.” It does not treat <code>0</code> or <code>""</code> as empty. <code>||</code> does treat those as empty, which is wrong for a score of 0 or a blank-but-present nickname.</p>
+<pre>const score = savedScore ?? 0;
+const label = nickname || "friend";</pre>
+
+<h2>More list tools</h2>
+<pre>const nums = [1, 2, 3, 4];
+nums.includes(3);                         // true
+nums.some((n) =&gt; n &gt; 3);                  // true, at least one
+nums.every((n) =&gt; n &gt; 0);                 // true, all of them
+nums.slice(1, 3);                         // [2, 3], original unchanged
+nums.findIndex((n) =&gt; n === 3);           // 2</pre>
+<p><code>slice</code> copies a section and leaves the list alone. <code>splice</code> edits the original list: it can delete and insert at an index. In React state, prefer <code>slice</code>, <code>filter</code>, and <code>map</code>, which return new lists. <code>splice</code> is the in-place tool, the same family as <code>push</code>.</p>
+<p><code>reduce</code> walks the list and carries one running result. The second argument is the starting result.</p>
+<pre>const total = [10, 20, 30].reduce((sum, n) =&gt; sum + n, 0);
+// 60
+
+const byId = tasks.reduce((box, task) =&gt; {
+  box[task.id] = task;
+  return box;
+}, {});</pre>
+<p>Read it as “start from 0, and for each number, return the next sum.” If you can say it with <code>map</code> or <code>filter</code>, do that. Use <code>reduce</code> when the result is one combined value: a total, a grouped object, a tally.</p>
+
+<h2>Map, Set, and JSON</h2>
+<p>A <code>Set</code> holds unique values and answers “is this in here?” quickly. A <code>Map</code> is a dictionary whose keys can be anything, not only strings. Ordinary objects are still the right box when the labels are strings you wrote yourself. Reach for <code>Map</code> when the key is an object or when you are adding and deleting keys constantly.</p>
+<pre>const seen = new Set();
+seen.add("a");
+seen.has("a");   // true</pre>
+<p>JSON is text that looks like JavaScript data. Servers send it. <code>localStorage</code> stores it. <code>JSON.stringify</code> turns data into text. <code>JSON.parse</code> turns text back into data. A function cannot survive that trip. Dates become strings.</p>
+<pre>const text = JSON.stringify({ title: "Buy milk", done: false });
+const task = JSON.parse(text);</pre>
+
+<h2>Errors you raise yourself</h2>
+<pre>function parseCount(text) {
+  const n = Number(text);
+  if (Number.isNaN(n)) {
+    throw new Error("Count must be a number");
+  }
+  return n;
+}</pre>
+<p><code>throw</code> stops the function and jumps to the nearest <code>catch</code>. <code>Number("hi")</code> is <code>NaN</code>, and <code>NaN === NaN</code> is false, so the test is <code>Number.isNaN</code>.</p>
+
+<h2>Remembering in the browser</h2>
+<p><code>localStorage</code> keeps strings for this site even after the tab closes. <code>sessionStorage</code> keeps them until the tab closes. Neither one is a database. Both are per site, visible to anyone who can use the browser on that machine, and limited to a few megabytes.</p>
+<pre>localStorage.setItem("tasks", JSON.stringify(tasks));
+const saved = localStorage.getItem("tasks");
+const tasksAgain = saved === null ? [] : JSON.parse(saved);</pre>
+<p>A React app that should survive refresh reads storage when state is created and writes it after the list changes. That pair is a custom hook in chapter 21. Do not put passwords or tokens you must hide into <code>localStorage</code>. Any script on the page can read it.</p>
+
+<h2>Timers</h2>
+<pre>const id = setTimeout(() =&gt; {
+  console.log("one second later");
+}, 1000);
+clearTimeout(id);
+
+const tick = setInterval(() =&gt; {
+  console.log("tick");
+}, 1000);
+clearInterval(tick);</pre>
+<p>The number is milliseconds. The function does not run inside the current recipe. It is scheduled. In React, start the timer in an effect and clear it in the cleanup, or the timer keeps firing after the component is gone.</p>
+
+<h1>19. Classes, this, and modules</h1>
+<h2>This</h2>
+<p><code>this</code> is “the object before the dot at the call.” It is not “the object where the function was written,” except for arrow functions.</p>
+<pre>const user = {
+  name: "Priya",
+  greet() {
+    return this.name;
+  },
+};
+user.greet();          // "Priya"
+const greet = user.greet;
+greet();               // undefined, nothing is before the dot</pre>
+<p>An arrow function does not get its own <code>this</code>. It uses the <code>this</code> of the place it was written. That is why event handlers inside React components are arrows or functions declared in the component: they see the render’s variables through a closure, and you rarely need <code>this</code> at all in modern React.</p>
+<p><code>fn.call(obj, arg)</code> and <code>fn.bind(obj)</code> set the object that will be <code>this</code>. You will read them in older code. You will rarely write them in a new React app.</p>
+
+<h2>Classes</h2>
+<p>A class is a blueprint, the same idea as in other languages. <code>constructor</code> runs when you write <code>new</code>. Methods live on the blueprint. <code>extends</code> makes a more specific blueprint. <code>super</code> calls the parent version.</p>
+<pre>class Vehicle {
+  constructor(name) {
+    this.name = name;
+  }
+  label() {
+    return this.name;
+  }
+}
+
+class Bus extends Vehicle {
+  label() {
+    return `Bus ${super.label()}`;
+  }
+}
+
+const bus = new Bus("River");
+bus.label();   // "Bus River"</pre>
+<p>Under the class, JavaScript still uses prototypes: if an object does not have a field, it looks on its blueprint, then on that blueprint’s parent. You can write code for years without touching <code>Object.getPrototypeOf</code>. The useful sentence is that a method is shared, and fields set on <code>this</code> belong to that one object.</p>
+<p>React function components replaced class components for everyday UI. One place still uses a class: an error boundary, in chapter 22, because that is how React lets a parent catch a crash in a child.</p>
+
+<h2>Modules</h2>
+<p>A module is a file that chooses what to share. Other files import those names. The top of the file runs once, the first time it is imported.</p>
+<pre>// math.js
+export function add(a, b) {
+  return a + b;
+}
+export default function clamp(n) {
+  return n &lt; 0 ? 0 : n;
+}
+
+// main.js
+import clamp, { add } from "./math.js";</pre>
+<p>The default import has no braces. Named imports have braces and must match the exported name. <code>export default</code> is one main thing per file, often a React component. Named exports are the rest. Do not make a file that both computes on import and starts the whole app. The app starts from <code>main.jsx</code>.</p>
+
+<h1>20. The event loop</h1>
+<p>JavaScript does one piece of your code at a time. That current piece is the call stack: the recipe on the counter. Slow browser work, such as a timer or a network request, happens off to the side. When it finishes, a callback is placed in a queue. The queue runs only when the stack is empty.</p>
+<p>There are two queues that matter. Promise callbacks are the fast tray, called microtasks. Timers are the later tray, called macrotasks. The fast tray is emptied before the next timer runs.</p>
+<pre>console.log("A");
+setTimeout(() =&gt; console.log("B"), 0);
+Promise.resolve().then(() =&gt; console.log("C"));
+console.log("D");
+// A, then D, then C, then B</pre>
+<p>Say it in order. <code>A</code> prints now. The timer is scheduled, even with a delay of 0. The promise callback is scheduled on the fast tray. <code>D</code> prints now. The stack is empty. The fast tray runs, so <code>C</code>. Then the timer runs, so <code>B</code>.</p>
+<p>This is why a long loop freezes the page: the stack never empties, so clicks and timers wait. This is why <code>await</code> gives the page a chance to breathe: it pauses that function and lets the stack clear. This is why setting state many times in one click still draws once: React waits until your event handler finishes, then renders. That waiting-until-the-end is batching.</p>
+<p>A timeout of 0 does not mean “right now.” It means “after the current recipe and after the promise tray.”</p>
+
+<h1>21. The rest of React’s memory</h1>
+<h2>Lazy starting state</h2>
+<p><code>useState(expensive())</code> runs <code>expensive</code> on every render, then throws the result away after the first time. Pass a function when the first value is costly or reads storage. React calls that function only on the first render.</p>
+<pre>const [tasks, setTasks] = useState(() =&gt; {
+  const saved = localStorage.getItem("tasks");
+  return saved === null ? [] : JSON.parse(saved);
+});</pre>
+
+<h2>useReducer</h2>
+<p><code>useState</code> is enough when the next value is a small edit. <code>useReducer</code> is better when many events share one piece of state and the edits have names: add, toggle, remove. A reducer is a function <code>(state, action) =&gt; nextState</code>. It must return a new value and leave the old one unchanged. <code>dispatch</code> sends an action.</p>
+<pre>function reducer(tasks, action) {
+  switch (action.type) {
+    case "add":
+      return [...tasks, action.task];
+    case "toggle":
+      return tasks.map((task) =&gt;
+        task.id === action.id ? { ...task, done: !task.done } : task
+      );
+    default:
+      return tasks;
+  }
+}
+
+function App() {
+  const [tasks, dispatch] = useReducer(reducer, []);
+  function add(title) {
+    dispatch({
+      type: "add",
+      task: { id: crypto.randomUUID(), title, done: false },
+    });
+  }
+}</pre>
+<p>The component says what happened. The reducer says how the list changes. That split is the same idea Redux uses for a whole app.</p>
+
+<h2>useMemo and useCallback</h2>
+<p>Both remember a result until the listed inputs change. <code>useMemo</code> remembers a value. <code>useCallback</code> remembers a function. They do not make a slow program fast by magic. They skip work, and remembering has a cost too.</p>
+<pre>const remaining = useMemo(
+  () =&gt; tasks.filter((task) =&gt; !task.done).length,
+  [tasks]
+);
+
+const toggle = useCallback((id) =&gt; {
+  setTasks((current) =&gt;
+    current.map((task) =&gt;
+      task.id === id ? { ...task, done: !task.done } : task
+    )
+  );
+}, []);</pre>
+<p>Use them when a calculation is actually heavy, or when a child wrapped in <code>React.memo</code> should skip rendering unless its props changed. <code>memo</code> means “if the props are the same as last time, reuse the previous picture.” A new function prop every render looks like a change, which is the case for <code>useCallback</code>. For a task list of twenty items, a plain <code>filter</code> during render is the right code. Add <code>useMemo</code> when you have measured a pause, not before.</p>
+
+<h2>A ref that points at the page</h2>
+<pre>function Search() {
+  const inputRef = useRef(null);
+  return (
+    &lt;&gt;
+      &lt;input ref={inputRef} /&gt;
+      &lt;button onClick={() =&gt; inputRef.current.focus()}&gt;Focus&lt;/button&gt;
+    &lt;/&gt;
+  );
+}</pre>
+<p><code>inputRef.current</code> is the real input after React draws it. Calling <code>focus</code> is a reach into the page, which is allowed for focus, scroll, and measuring size. The text in the box still belongs in state if you need to read it for a save.</p>
+
+<h2>Custom hooks</h2>
+<p>A custom hook is a function whose name starts with <code>use</code> and that calls other hooks. It exists so two components can share behavior without sharing a component. This one keeps a value and mirrors it into <code>localStorage</code>.</p>
+<pre>function useLocalState(key, initial) {
+  const [value, setValue] = useState(() =&gt; {
+    const saved = localStorage.getItem(key);
+    return saved === null ? initial : JSON.parse(saved);
+  });
+
+  useEffect(() =&gt; {
+    localStorage.setItem(key, JSON.stringify(value));
+  }, [key, value]);
+
+  return [value, setValue];
+}</pre>
+<p>Rules, with no exceptions: call hooks only at the top of a component or another hook. Call them in the same order every time. Do not call them inside a loop, an <code>if</code>, or a nested function. The name must start with <code>use</code> so you and the linter can see the rule applies.</p>
+
+<h1>22. Pages, stores, style, and tests</h1>
+<h2>React Router</h2>
+<p>A router picks a component from the address bar. The page does not reload. <code>Link</code> changes the address. <code>useParams</code> reads the changing part of the path. <code>useNavigate</code> changes it from code, after a save for example.</p>
+<pre>import { BrowserRouter, Routes, Route, Link, useParams } from "react-router-dom";
+
+function App() {
+  return (
+    &lt;BrowserRouter&gt;
+      &lt;nav&gt;
+        &lt;Link to="/"&gt;Home&lt;/Link&gt;
+        &lt;Link to="/tasks"&gt;Tasks&lt;/Link&gt;
+      &lt;/nav&gt;
+      &lt;Routes&gt;
+        &lt;Route path="/" element={&lt;Home /&gt;} /&gt;
+        &lt;Route path="/tasks" element={&lt;TaskPage /&gt;} /&gt;
+        &lt;Route path="/tasks/:id" element={&lt;TaskDetail /&gt;} /&gt;
+      &lt;/Routes&gt;
+    &lt;/BrowserRouter&gt;
+  );
+}
+
+function TaskDetail() {
+  const { id } = useParams();
+  return &lt;p&gt;Task {id}&lt;/p&gt;;
+}</pre>
+<p>Install it with <code>npm install react-router-dom</code>. The address <code>/tasks/12</code> renders <code>TaskDetail</code> and <code>id</code> is <code>"12"</code>, a string. One router wraps the whole app. Routes are the table of contents.</p>
+
+<h2>A store, and Redux</h2>
+<p>Context is a pipe for a value. A store is a stronger idea: one state tree, and the only way to change it is to send an action through a reducer. That matters when many screens edit the same data and you want a log of what happened.</p>
+<p>Redux is that store. Redux Toolkit is the way people write it now. <code>createSlice</code> builds the actions and the reducer together. Inside those reducers you may write <code>state.push</code>. Toolkit copies the change for you, using a helper called Immer. That permission is only inside the slice. Everywhere else, you still do not mutate.</p>
+<pre>import { configureStore, createSlice } from "@reduxjs/toolkit";
+import { Provider, useDispatch, useSelector } from "react-redux";
+
+const tasksSlice = createSlice({
+  name: "tasks",
+  initialState: [],
+  reducers: {
+    added(state, action) {
+      state.push(action.payload);
+    },
+  },
+});
+
+const store = configureStore({ reducer: { tasks: tasksSlice.reducer } });
+
+function AddButton() {
+  const dispatch = useDispatch();
+  const count = useSelector((state) =&gt; state.tasks.length);
+  return (
+    &lt;button
+      onClick={() =&gt;
+        dispatch(tasksSlice.actions.added({ id: crypto.randomUUID(), title: "New" }))
+      }
+    &gt;
+      {count} tasks
+    &lt;/button&gt;
+  );
+}
+
+function Root() {
+  return (
+    &lt;Provider store={store}&gt;
+      &lt;AddButton /&gt;
+    &lt;/Provider&gt;
+  );
+}</pre>
+<p><code>useSelector</code> reads. <code>dispatch</code> sends an action. The component does not hold the list. Start with <code>useState</code> and lifted state. Move to a store when several distant screens must edit one shared model and passing props has become the messy part. A theme and a signed-in name can stay in context. A task list used by one page can stay in <code>useState</code>.</p>
+
+<h2>Style</h2>
+<table>
+<tr><th>Way</th><th>What you write</th><th>Use it when</th></tr>
+<tr><td>A CSS file</td><td><code>className="card"</code> and a stylesheet</td><td>The look is shared and simple</td></tr>
+<tr><td>CSS modules</td><td><code>import styles from "./Card.module.css"</code> then <code>styles.card</code></td><td>You want the class name to belong to this file only</td></tr>
+<tr><td>Inline style</td><td><code>style={{ color: "navy" }}</code></td><td>A value depends on data, such as a width</td></tr>
+<tr><td>Utility classes</td><td>Tailwind classes like <code>className="p-4 text-lg"</code></td><td>The team has agreed to style in the markup</td></tr>
+</table>
+<p>Inline styles want objects, and names are camelCase: <code>backgroundColor</code>, not <code>background-color</code>. Pick one main way per project. Mixing all four in one component is how a button becomes impossible to restyle.</p>
+<pre>/* Card.module.css */
+.card { padding: 12px; border: 1px solid #ccc; }</pre>
+<pre>import styles from "./Card.module.css";
+export function Card({ children }) {
+  return &lt;section className={styles.card}&gt;{children}&lt;/section&gt;;
+}</pre>
+
+<h2>Tests</h2>
+<p>A React test renders the component, does what a person would do, and checks the screen. It does not check the private state variable. Testing Library and Vitest are the usual pair in a Vite project.</p>
+<pre>import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { expect, test } from "vitest";
+import Counter from "./Counter.jsx";
+
+test("counts clicks", async () => {
+  render(&lt;Counter /&gt;);
+  const button = screen.getByRole("button", { name: "Clicked 0 times" });
+  await userEvent.click(button);
+  expect(screen.getByRole("button", { name: "Clicked 1 times" })).toBeInTheDocument();
+});</pre>
+<p>The button name is the text a screen reader would use. If the test cannot find it, the button is probably unlabeled for people too. Test the behavior: click Add, see the task. Skip tests that only say a function was called, unless that function is a real edge such as <code>fetch</code>.</p>
+
+<h2>Error boundaries</h2>
+<p>A crash while drawing a child would blank the whole tree. An error boundary is a parent that catches that crash and shows a fallback. This is the class component you still write. Hooks cannot catch a child’s render error.</p>
+<pre>import { Component } from "react";
+
+class ErrorBoundary extends Component {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    if (this.state.failed) return &lt;p&gt;Something broke.&lt;/p&gt;;
+    return this.props.children;
+  }
+}</pre>
+<p>Wrap a panel, not every button. The boundary does not catch errors in event handlers. Those still use <code>try/catch</code>. It catches bad rendering: a mistake while producing the picture.</p>
+
+<h2>A button people can use</h2>
+<p>Use a <code>&lt;button&gt;</code> for actions and a <code>&lt;a&gt;</code> or <code>&lt;Link&gt;</code> for going somewhere. Do not put a click on a <code>&lt;div&gt;</code>. Tie every input to a <code>&lt;label&gt;</code>. The testing section and a keyboard user are asking for the same thing.</p>
+
+<h1>23. Next.js and the full map</h1>
+<p>Next.js is a framework around React. It adds file routes, a server, and a build. In the App Router, a folder under <code>app</code> is a URL. <code>app/page.js</code> is <code>/</code>. <code>app/tasks/page.js</code> is <code>/tasks</code>.</p>
+<p>Components are server components unless the file says <code>"use client"</code> at the top. A server component runs on the server, can read data there, and sends HTML. It cannot use <code>useState</code>, <code>useEffect</code>, or click handlers. A client component is the React you already know: state, effects, and events. Put <code>"use client"</code> on the smallest file that needs those, and leave the rest on the server.</p>
+<pre>// app/page.js  — server component, no state
+export default function Home() {
+  return &lt;h1&gt;Home&lt;/h1&gt;;
+}
+
+// app/counter/page.js
+"use client";
+import { useState } from "react";
+
+export default function Counter() {
+  const [n, setN] = useState(0);
+  return &lt;button onClick={() =&gt; setN(n + 1)}&gt;{n}&lt;/button&gt;;
+}</pre>
+<p>Data fetching on the server can be a direct <code>await</code> in a server component. Data fetching in a client component is still an effect or a library built for that. Do not copy the server <code>await</code> into a client file. The file’s first line tells you which rules apply.</p>
+<p>Environment variables that the browser may see, in Vite, start with <code>VITE_</code> and are read as <code>import.meta.env.VITE_API_URL</code>. In Next.js the public ones start with <code>NEXT_PUBLIC_</code>. Anything without that prefix stays on the server. A secret in a client component is no longer a secret.</p>
+
+<h2>Where each fact lives</h2>
+<table>
+<tr><th>Fact</th><th>Home</th></tr>
+<tr><td>Text currently in one input</td><td><code>useState</code> in that form</td></tr>
+<tr><td>A list one screen edits</td><td><code>useState</code> or <code>useReducer</code> in the parent of that screen</td></tr>
+<tr><td>A list many distant screens edit</td><td>A store, or context if the edits are rare</td></tr>
+<tr><td>Theme, language, current user</td><td>Context, often fed once near the root</td></tr>
+<tr><td>Which page the address shows</td><td>The router</td></tr>
+<tr><td>A value that must survive refresh</td><td><code>localStorage</code> or a server, mirrored into state</td></tr>
+<tr><td>A timer id or an input you must focus</td><td>A ref</td></tr>
+<tr><td>A heavy calculation you have measured</td><td><code>useMemo</code></td></tr>
+</table>
+
+<h2>You have the whole map</h2>
+<p>JavaScript: values, names, decisions, functions, lists, objects, the page, promises, the event loop, classes, modules, storage, and the list tools including <code>reduce</code> and <code>?.</code>.</p>
+<p>React: components, JSX, props, state, lists, forms, effects, refs, reducer, memo, custom hooks, router, context, Redux, CSS, tests, error boundaries, and what Next.js adds with server and client components.</p>
+<p>The order to practice is still the task list, then refresh-proof storage with the custom hook, then a second page with the router, then one test that clicks Add. The store and Next.js come after those feel ordinary. The screen is still a picture of data. The new chapters only change where that data lives and when the picture is drawn.</p>
+<p class="end">End of the complete JavaScript and React guide.</p>
+
+<h1>24. Interview questions and answers</h1>
+<p>Say the answer in a few sentences, then give the example if they ask you to go deeper. The questions follow the book. A strong answer names the rule, not a library slogan.</p>
+
+<h2>JavaScript</h2>
+<p><strong>What is the difference between <code>const</code>, <code>let</code>, and <code>var</code>?</strong> <code>const</code> cannot be reassigned. <code>let</code> can. Both live in the block where they were written. <code>var</code> is function-scoped and can be seen before its line in surprising ways. Use <code>const</code> until you must reassign. A <code>const</code> object can still have its fields changed. The sticker is fixed. The inside of the box is not.</p>
+<p><strong>What is the difference between <code>==</code> and <code>===</code>?</strong> <code>===</code> checks value and type. <code>==</code> converts types first, so <code>"5" == 5</code> is true and <code>"5" === 5</code> is false. Use <code>===</code>.</p>
+<p><strong>What is <code>null</code> versus <code>undefined</code>?</strong> <code>undefined</code> means no value was put here. <code>null</code> means a value was put here on purpose and it is empty. Test missing objects with <code>=== null</code> or <code>== null</code> only when you mean both.</p>
+<p><strong>Which values are falsy?</strong> <code>false</code>, <code>0</code>, <code>""</code>, <code>null</code>, <code>undefined</code>, and <code>NaN</code>. An empty array is truthy. The text <code>"0"</code> is truthy.</p>
+<p><strong>What do <code>map</code>, <code>filter</code>, <code>find</code>, and <code>reduce</code> do?</strong> <code>map</code> builds a new list of the same length by transforming each item. <code>filter</code> builds a new list of the items that pass a test. <code>find</code> returns the first match or <code>undefined</code>. <code>reduce</code> carries one running result, such as a sum. None of them change the original list.</p>
+<p><strong>What is the difference between <code>slice</code> and <code>splice</code>?</strong> <code>slice</code> copies a section and leaves the array alone. <code>splice</code> inserts or deletes in the original array. React state wants the copying tools.</p>
+<p><strong>What do <code>?.</code> and <code>??</code> do?</strong> <code>user?.address?.city</code> stops if <code>user</code> or <code>address</code> is <code>null</code> or <code>undefined</code>. <code>value ?? 0</code> uses 0 only when <code>value</code> is <code>null</code> or <code>undefined</code>. It keeps <code>0</code> and <code>""</code>. <code>||</code> would replace those too.</p>
+<p><strong>Are arguments passed by value or by reference?</strong> The parameter sticker is stuck on the same object. Reassigning the parameter does not change the caller’s sticker. Mutating the object, such as <code>push</code>, is visible to the caller because there is one object.</p>
+<p><strong>What is a closure?</strong> A function that keeps using variables from the place it was created, after that outer function has returned. <code>makeAdder(5)</code> returns a function that still sees <code>5</code>.</p>
+<p><strong>What is <code>this</code>?</strong> For a normal method, it is the object before the dot at the call. Pull the method off the object and <code>this</code> is lost. An arrow function does not get its own <code>this</code>. It uses the <code>this</code> of the place it was written.</p>
+<p><strong>What is a Promise?</strong> An IOU for a later value or a failure. <code>await</code> pauses that function until the IOU settles and lets other code run. Without <code>await</code>, you hold the Promise, not the user. <code>try/catch</code> handles the failure.</p>
+<p><strong>What does this print: log A, <code>setTimeout</code> 0 logs B, a resolved promise logs C, log D?</strong> A, D, C, B. A and D run now. The promise callback is a microtask and runs before the timer. A timeout of 0 still waits until the stack is empty and the promise tray is empty.</p>
+<p><strong>Why does a long loop freeze the page?</strong> JavaScript runs one call stack. Clicks and timers run only when that stack is empty. A long loop never gives them a turn.</p>
+<p><strong>What is the difference between <code>localStorage</code> and <code>sessionStorage</code>?</strong> Both store strings for this site. <code>localStorage</code> survives closing the tab. <code>sessionStorage</code> lasts until the tab closes. Objects must go through <code>JSON.stringify</code> and <code>JSON.parse</code>. Do not store secrets there.</p>
+<p><strong>What is a default export versus a named export?</strong> A file has one default, imported without braces. Named exports are imported with braces and the same name: <code>import App, { add } from "./math.js"</code>.</p>
+
+<h2>React</h2>
+<p><strong>What is React?</strong> A library for describing the screen as a function of data. You change data with a setter. React calls the function again and updates the real page to match the new description. You do not hunt for a DOM node on each click.</p>
+<p><strong>What is a component?</strong> A function whose name starts with a capital letter and that returns JSX. <code>&lt;Hello /&gt;</code> means call that function. Lowercase tags are HTML.</p>
+<p><strong>What is JSX?</strong> A way to write element descriptions inside JavaScript. Curly braces jump back into JavaScript. It is compiled to function calls. <code>class</code> is written <code>className</code>. A multi-line return needs parentheses, or the function returns <code>undefined</code>.</p>
+<p><strong>What are props?</strong> Inputs a parent passes to a child. The child reads them and does not change them. <code>onClick={save}</code> passes the function. <code>onClick={save()}</code> calls it while rendering.</p>
+<p><strong>What is state?</strong> Memory React keeps between renders. <code>useState</code> returns the current value and a setter. Calling the setter stores the value and schedules a re-render. A normal variable inside the function starts over on every render.</p>
+<p><strong>Why didn’t the screen update?</strong> The data changed in a way React could not see. Either there was no setter, or the setter was given the same array or object after <code>push</code> or a field write. Pass a new array or object, usually with spread, <code>map</code>, or <code>filter</code>.</p>
+<p><strong>When do you use the function form of the setter?</strong> When the next value depends on the previous one, especially if several updates can pile up: <code>setCount((current) =&gt; current + 1)</code>.</p>
+<p><strong>What is a key?</strong> A stable id on each element returned from <code>map</code>, so React can match rows across renders. An array index breaks when the list is reordered or filtered, because the wrong row keeps the checkbox or the cursor.</p>
+<p><strong>What is a controlled input?</strong> The input’s <code>value</code> is state, and <code>onChange</code> writes that state. The screen and the data are the same string. <code>value</code> without <code>onChange</code> freezes the box.</p>
+<p><strong>What is <code>useEffect</code> for?</strong> Work that reaches outside rendering: fetch, timers, subscriptions. It runs after paint. The dependency list says when to run again. The function you return is the cleanup. Do not use an effect to copy one state into another. Compute that while rendering.</p>
+<p><strong>Why can an old fetch overwrite a new one?</strong> The request for id 1 can finish after the user has switched to id 2. Cleanup sets a flag, or aborts the request, so the late answer does not call the setter.</p>
+<p><strong>What are the rules of hooks?</strong> Call them at the top of a component or a custom hook, in the same order every render. Do not put them in a condition, a loop, or a nested function. Custom hooks start with <code>use</code>.</p>
+<p><strong>What is <code>useRef</code>?</strong> A box that survives renders. Changing <code>.current</code> does not redraw. Use it for a timer id or to focus an input. Do not hide the score there and expect the screen to change. The screen follows state.</p>
+<p><strong>What is <code>useReducer</code>?</strong> State plus a function <code>(state, action) =&gt; nextState</code>. The component dispatches named events such as add and toggle. The reducer owns the update rules. Use it when many events edit one value.</p>
+<p><strong>What do <code>useMemo</code> and <code>useCallback</code> do?</strong> They remember a value or a function until the listed inputs change. They help a measured slow calculation, or a <code>memo</code> child that should skip rendering when props are unchanged. A small filter does not need them.</p>
+<p><strong>What is context?</strong> A way to pass a widely needed value, such as theme or the current user, without handing it through every middle component. It is a poor home for every piece of state.</p>
+<p><strong>What is Redux?</strong> One store for shared state. The screen reads with <code>useSelector</code> and changes state by dispatching actions. Reducers return the next state. Redux Toolkit’s <code>createSlice</code> lets you write those reducers as if you mutated a draft. That permission exists only inside the slice. Start with <code>useState</code>. Move to a store when many distant screens edit the same model.</p>
+<p><strong>How does routing work?</strong> React Router matches the address to an element. <code>Link</code> changes the address without a full reload. <code>useParams</code> reads <code>:id</code> from the path. The value is a string.</p>
+<p><strong>What is an error boundary?</strong> A class component that catches a crash while a child is rendering and shows a fallback. Hooks cannot do that job. It does not catch errors inside event handlers. Those use <code>try/catch</code>.</p>
+<p><strong>How do you test a component?</strong> Render it, click or type the way a person would, and assert on the screen. Query by role and name. Do not assert on the private state variable.</p>
+<p><strong>What is a server component versus a client component in Next.js?</strong> A server component runs on the server, can await data there, and cannot use state, effects, or clicks. A client component is marked <code>"use client"</code> and is the React with hooks and events. Put that line on the smallest file that needs it.</p>
+
+<h2>Short coding answers</h2>
+<p><strong>Build a counter.</strong> <code>useState(0)</code>. The button’s text is <code>Clicked {count} times</code>. <code>onClick</code> calls <code>setCount((n) =&gt; n + 1)</code>.</p>
+<p><strong>Add an item to a list in state.</strong> <code>setItems((current) =&gt; [...current, item])</code>. Do not <code>push</code> and then set the same array.</p>
+<p><strong>Toggle one task.</strong> <code>setTasks((current) =&gt; current.map((task) =&gt; task.id === id ? { ...task, done: !task.done } : task))</code>.</p>
+<p><strong>Remove duplicates and keep order.</strong> Walk the list with a <code>Set</code> of values already returned, or use a filter with <code>indexOf</code>. A <code>Set</code> alone does not give you a React row until you spread it back to an array.</p>
+<pre>function unique(items) {
+  return [...new Set(items)];
+}</pre>
+<p><strong>Group items by a field.</strong> <code>reduce</code> into an object of arrays.</p>
+<pre>function groupBy(items, key) {
+  return items.reduce((groups, item) =&gt; {
+    const name = item[key];
+    groups[name] = groups[name] ?? [];
+    groups[name].push(item);
+    return groups;
+  }, {});
+}</pre>
+<p><strong>Save the task list across refresh.</strong> Initialize state from <code>localStorage</code> with the function form of <code>useState</code>. Write <code>JSON.stringify</code> in an effect that depends on the list. Store strings only.</p>
+
+<h2>How to practice</h2>
+<ol>
+<li>Cover the answer. Say yours in under a minute.</li>
+<li>Write the counter, the add, and the toggle from memory and run them.</li>
+<li>Explain the print order A, D, C, B without looking.</li>
+<li>Stop when a frozen input makes you say “controlled value without a setter” before you say “React is broken.”</li>
+</ol>
+<p class="end">End of the interview questions and answers.</p>
+
+</body></html>

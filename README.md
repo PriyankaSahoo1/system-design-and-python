@@ -1,4 +1,4 @@
-# System design and Python
+# System design, Python, JavaScript, and React
 
 Offline study guides, from first concepts through interview questions.
 
@@ -11,5 +11,9 @@ Offline study guides, from first concepts through interview questions.
 ## Python
 
 - [Python concepts and interview questions](python/Python-Concepts-Complete-Guide.pdf) covers the language from names and objects through concurrency, tests, and interview answers.
+
+## JavaScript and React
+
+- [JavaScript and React, with interview answers](javascript-react/JavaScript-and-React-Complete-Guide.pdf) covers the language, React, routing, state, tests, Next.js, and interview questions.
 
 HTML sources used to build the PDFs are kept beside them so the guides can be regenerated later.

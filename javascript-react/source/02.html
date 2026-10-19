@@ -1,0 +1,210 @@
+<h1>8. What React is</h1>
+<p>React is a library for building a screen out of functions. Each function returns a description of a piece of the page. When the data changes, you call the function again and get a new description. React looks at the new description and the old one and updates only the parts of the real page that differ.</p>
+<p>The picture in your head:</p>
+<ol>
+<li>Data sits in memory. A score is <code>0</code>.</li>
+<li>A function reads that data and says “show a paragraph with 0 and a button.”</li>
+<li>Someone clicks.</li>
+<li>You replace the score with <code>1</code> using React’s setter, not by quiet assignment.</li>
+<li>React calls the function again. Now it says “show a paragraph with 1.”</li>
+<li>React changes the paragraph on the real page.</li>
+</ol>
+<p>You do not hunt for the paragraph and edit it. You change the data, and the function is the rule for the picture. That rule is the whole trick. People struggle when they still try to edit the page the old way, or when they change data in a way React cannot see.</p>
+<p>A <strong>component</strong> is one of those functions. A <strong>re-render</strong> is React calling it again. A <strong>hook</strong> is a function whose name starts with <code>use</code>, such as <code>useState</code>. Hooks are how a function keeps memory between calls. You call hooks at the top of the component, not inside an <code>if</code>, so React can match each memory slot to the same call every time.</p>
+
+<h1>9. Components and JSX</h1>
+<p>JSX looks like HTML inside JavaScript. It is not HTML. It is a way to write “this element, with these settings, with these children.” A tool turns it into function calls before the browser runs it. You write the readable form.</p>
+<pre>function Hello() {
+  const name = "Priya";
+  return &lt;h1&gt;Hello, {name}&lt;/h1&gt;;
+}</pre>
+<p>Curly braces jump from “tag land” back into JavaScript. <code>{name}</code> prints the value. A component name starts with a capital letter. <code>&lt;Hello /&gt;</code> means “call this component.” <code>&lt;h1&gt;</code> means a real heading. Lowercase tags are HTML. Capitalized tags are your functions.</p>
+<p>One component returns one parent. If you need two siblings, wrap them. An empty wrap <code>&lt;&gt;...&lt;/&gt;</code> does not add an extra box on the page.</p>
+<pre>function Header() {
+  return (
+    &lt;&gt;
+      &lt;h1&gt;Notes&lt;/h1&gt;
+      &lt;p&gt;A small list&lt;/p&gt;
+    &lt;/&gt;
+  );
+}</pre>
+<p>The parentheses let the return stretch over several lines. Without them, JavaScript would return <code>undefined</code> and ignore the next lines. That bug looks like a blank screen.</p>
+<p>Write a real attribute as <code>className</code>, not <code>class</code>, because <code>class</code> is a JavaScript word. Write <code>htmlFor</code> instead of <code>for</code> on a label. Close every tag. A comment inside JSX is <code>{/* like this */}</code>.</p>
+<p>JavaScript expressions are allowed in the braces. Statements such as <code>if</code> are not. You compute the value above the return, or you use a conditional expression.</p>
+<pre>function Status({ ready }) {
+  return &lt;p&gt;{ready ? "Ready" : "Loading"}&lt;/p&gt;;
+}</pre>
+
+<h1>10. Props: inputs to a brick</h1>
+<p><strong>Props</strong> are the inputs a parent passes to a child. The child reads them. The child does not change them. Think of a rubber stamp: the parent sets the words, the child presses them onto the page.</p>
+<pre>function Greeting({ name }) {
+  return &lt;p&gt;Hello, {name}&lt;/p&gt;;
+}
+
+function App() {
+  return &lt;Greeting name="Priya" /&gt;;
+}</pre>
+<p><code>{ name }</code> pulls <code>name</code> out of the props object. This is the same as:</p>
+<pre>function Greeting(props) {
+  return &lt;p&gt;Hello, {props.name}&lt;/p&gt;;
+}</pre>
+<p>A prop can be any value: a number, a list, or a function.</p>
+<pre>function SaveButton({ onSave }) {
+  return &lt;button onClick={onSave}&gt;Save&lt;/button&gt;;
+}</pre>
+<p><code>onClick={onSave}</code> passes the function. <code>onClick={onSave()}</code> calls it immediately while drawing, which is almost never what you want. The parentheses mean “do it now.” Without parentheses, you hand over the recipe and the click does it later.</p>
+<p>Whatever you put between an opening tag and a closing tag arrives as <code>children</code>.</p>
+<pre>function Card({ children }) {
+  return &lt;section className="card"&gt;{children}&lt;/section&gt;;
+}
+
+function App() {
+  return (
+    &lt;Card&gt;
+      &lt;h2&gt;Today&lt;/h2&gt;
+    &lt;/Card&gt;
+  );
+}</pre>
+
+<h1>11. State: memory that redraws</h1>
+<p>Ordinary variables forget, in a way that matters. Every re-render calls your function from the top. A <code>let score = 0</code> inside the function starts at 0 again. <strong>State</strong> is memory React keeps for you between those calls.</p>
+<pre>import { useState } from "react";
+
+function Counter() {
+  const [count, setCount] = useState(0);
+
+  function increment() {
+    setCount(count + 1);
+  }
+
+  return (
+    &lt;button onClick={increment}&gt;
+      Clicked {count} times
+    &lt;/button&gt;
+  );
+}</pre>
+<p>Read <code>useState(0)</code> as “remember a number, starting at 0.” It returns a pair: the current value, and a setter. The names <code>count</code> and <code>setCount</code> are a custom. Calling <code>setCount</code> does two things: it stores the new number, and it asks React to call <code>Counter</code> again. The button’s text changes because the function returns new text, not because you edited the button.</p>
+<p>This does not redraw:</p>
+<pre>count = count + 1;          // if count were a let, still the wrong idea
+// or
+count++;                    // you cannot assign to count from useState</pre>
+<p>The screen follows the setter. If you change a value and React did not see the setter, the picture stays old. That single rule explains most “I updated it but nothing happened.”</p>
+<p>When the next value depends on the previous one, and several updates might pile up, pass a function to the setter.</p>
+<pre>setCount((current) =&gt; current + 1);</pre>
+<p>React will give that function the latest stored count. Use this form for clicks that add one. Use <code>setCount(next)</code> when you already know the whole next value, such as clearing to 0 or storing what was typed.</p>
+<p>State can be a list or an object. Replace the whole value with a new one. Do not <code>push</code> into the old list and expect a redraw. <code>push</code> edits the box in place, and React may look at it and think nothing changed, because the box is the same box.</p>
+<pre>function addTodo(text) {
+  setTodos((current) =&gt; [
+    ...current,
+    { id: crypto.randomUUID(), text, done: false },
+  ]);
+}</pre>
+<p>The spread <code>...current</code> copies the old items into a new array, then the new item is added at the end. New array, so React can see the change.</p>
+<p>State belongs to the component that needs to change it, or to the closest parent of the children that must share it. Putting every value in one giant state works and becomes muddy. Putting a copy of the same fact in two states lets them disagree. One fact, one home.</p>
+
+<h1>12. Lists, choices, and forms</h1>
+<p>To show a list, <code>map</code> data into elements. Each element needs a <code>key</code> that is stable for that item. React uses the key to match “this row last time” with “this row this time” when the list is reordered or filtered. The key goes on the element you return from <code>map</code>, and it is not a prop your component reads unless you also pass it under another name.</p>
+<pre>function TodoList({ todos }) {
+  return (
+    &lt;ul&gt;
+      {todos.map((todo) =&gt; (
+        &lt;li key={todo.id}&gt;{todo.text}&lt;/li&gt;
+      ))}
+    &lt;/ul&gt;
+  );
+}</pre>
+<p>Use an id from the data. Using the array index as the key looks fine until you delete or reorder, and then the wrong row keeps the cursor or the checkbox. An index key is acceptable only for a list that never changes order.</p>
+<p>Show or hide by choosing what to return. <code>&amp;&amp;</code> is a shortcut: when the left side is false, React renders nothing for that spot.</p>
+<pre>function Warning({ count }) {
+  return (
+    &lt;div&gt;
+      {count === 0 &amp;&amp; &lt;p&gt;Add your first task.&lt;/p&gt;}
+      {count &gt; 0 &amp;&amp; &lt;p&gt;{count} tasks&lt;/p&gt;}
+    &lt;/div&gt;
+  );
+}</pre>
+<p>Do not use <code>count &amp;&amp; ...</code> when <code>count</code> might be <code>0</code>. Zero is false, and React will print the <code>0</code> on the page. Compare with <code>===</code> or use a ternary.</p>
+<p>A form field that shows state and writes state on every change is a <strong>controlled input</strong>. The input does not keep a secret copy. The picture and the data are the same string.</p>
+<pre>function NameField() {
+  const [name, setName] = useState("");
+
+  return (
+    &lt;label&gt;
+      Name
+      &lt;input
+        value={name}
+        onChange={(event) =&gt; setName(event.target.value)}
+      /&gt;
+    &lt;/label&gt;
+  );
+}</pre>
+<p><code>event.target</code> is the input element. <code>value</code> is what is in it right now. You store that string. On the next draw, <code>value={name}</code> puts it back. If you set <code>value</code> and forget <code>onChange</code>, the input is frozen, because every keystroke is thrown away and the old state is written back.</p>
+<p>Submitting a form: call <code>event.preventDefault()</code> so the browser does not reload the page. Then use the state you already have.</p>
+<pre>function onSubmit(event) {
+  event.preventDefault();
+  addTodo(name);
+  setName("");
+}</pre>
+
+<h1>13. Effects: work after the drawing</h1>
+<p>Rendering should be a pure description: same data in, same picture out, no fetching, no writing to the page by hand. Work that reaches outside that description is an <strong>effect</strong>: fetching, a timer, a subscription. <code>useEffect</code> runs that work after React has painted.</p>
+<pre>import { useEffect, useState } from "react";
+
+function UserCard({ id }) {
+  const [user, setUser] = useState(null);
+
+  useEffect(() =&gt; {
+    let ignore = false;
+
+    async function load() {
+      const response = await fetch(`/users/${id}`);
+      const data = await response.json();
+      if (!ignore) setUser(data);
+    }
+
+    load();
+    return () =&gt; {
+      ignore = true;
+    };
+  }, [id]);
+
+  if (user === null) return &lt;p&gt;Loading...&lt;/p&gt;;
+  return &lt;p&gt;{user.name}&lt;/p&gt;;
+}</pre>
+<p>The list at the end, <code>[id]</code>, means “run again when <code>id</code> changes.” An empty list <code>[]</code> means “run after the first paint only.” No list means “run after every paint,” which is usually a bug.</p>
+<p>The function you return is a cleanup. React calls it before running the effect again, and when the component leaves the screen. The <code>ignore</code> flag matters because a slow answer for user 1 can arrive after you have already switched to user 2. Without the flag, user 1’s name would overwrite user 2.</p>
+<p>You do not need an effect to compute something from state. If <code>fullName</code> is <code>first + " " + last</code>, compute it while rendering. An effect that only copies one state into another state is extra memory that can disagree with itself.</p>
+<p><code>useRef</code> is a box that survives re-renders and does not cause a re-render when you change <code>.current</code>. Use it for a timer id, or for remembering the DOM node when you truly must. Do not hide the score in a ref and then wonder why the screen is stale. The screen follows state.</p>
+
+<h1>14. How data moves</h1>
+<p>Data in React flows down. A parent passes props to children. Children do not reach up and edit the parent’s variables. If a child must change the parent’s state, the parent passes down a function.</p>
+<pre>function App() {
+  const [query, setQuery] = useState("");
+  return (
+    &lt;&gt;
+      &lt;SearchBox query={query} onChange={setQuery} /&gt;
+      &lt;Results query={query} /&gt;
+    &lt;/&gt;
+  );
+}</pre>
+<p>Both children see the same <code>query</code> because it lives once, in <code>App</code>. <code>SearchBox</code> calls <code>onChange</code>, which is <code>setQuery</code>. That is lifting state: the state sits above everyone who needs it.</p>
+<p>Passing a value through many layers that do not use it is prop drilling. It is clumsy and it is still correct. When many distant components need the same value, <strong>context</strong> is a pipe that skips the middle layers.</p>
+<pre>import { createContext, useContext, useState } from "react";
+
+const ThemeContext = createContext("light");
+
+function App() {
+  const [theme, setTheme] = useState("light");
+  return (
+    &lt;ThemeContext.Provider value={theme}&gt;
+      &lt;Toolbar onToggle={() =&gt; setTheme(theme === "light" ? "dark" : "light")} /&gt;
+    &lt;/ThemeContext.Provider&gt;
+  );
+}
+
+function Panel() {
+  const theme = useContext(ThemeContext);
+  return &lt;section className={theme}&gt;Body&lt;/section&gt;;
+}</pre>
+<p><code>Panel</code> can sit deep under <code>Toolbar</code> and still read <code>theme</code>. Context is for data that is widely needed: theme, the signed-in user, the language. It is a poor place for every piece of state. A todo’s text still belongs next to the list.</p>
+<p>One-way flow is the reason bugs are findable. If the screen is wrong, look at the state that feeds it, then at the function that set it, then at the click that called that function. You do not search the whole page for someone who edited a paragraph.</p>
