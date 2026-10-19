@@ -1,0 +1,291 @@
+<h1 class="cover">System Design from Zero</h1>
+<p class="subtitle">High-level design and low-level design. A complete offline guide.</p>
+<p>This book teaches both maps of a software system. High-level design (HLD) is the city: machines, roads between them, and what happens when the city is busy or something breaks. Low-level design (LLD) is one building: the classes, the methods, the tables, and the rules inside a program.</p>
+<p>You do not need a job, a course, or prior vocabulary. Every term is defined at the moment it is used. Later chapters reuse the words on purpose, so they stick.</p>
+
+<h2>How to use this book</h2>
+<ol>
+<li>Read chapters 1 through 6 once, in order. They are the spine. TinyLink, a short-link service, is built in full so you can see every step.</li>
+<li>Read chapters 7 through 18 as the catalog. Each one is a tool you pick up when a design needs it.</li>
+<li>Study the worked systems in chapter 19 by covering the page and trying the ten-line script in chapter 20 before you peek.</li>
+<li>Study the LLD half the same way: rules first, then one drill a day from chapter 28.</li>
+<li>Keep the checklists and the glossary printed beside you when you practice.</li>
+</ol>
+<div class="note">Assumptions in estimates are labeled as assumptions. Change the assumption and the arithmetic changes. The method stays.</div>
+
+<h2>Contents</h2>
+<ol class="toc">
+<li>The two maps</li>
+<li>The HLD method</li>
+<li>TinyLink, a complete HLD</li>
+<li>Size math you can do on paper</li>
+<li>APIs, HTTP, and contracts</li>
+<li>Data that survives a restart</li>
+<li>Caching</li>
+<li>Names, doors, and distance: DNS, load balancers, CDN</li>
+<li>Copies, consistency, and CAP</li>
+<li>Sharding</li>
+<li>Queues and delivery promises</li>
+<li>Transactions, local and distributed</li>
+<li>Real-time connections</li>
+<li>Feeds and fanout</li>
+<li>More than one city</li>
+<li>Staying up: timeouts, retries, breakers, limits</li>
+<li>Security</li>
+<li>Seeing a running system</li>
+<li>One program or many</li>
+<li>Tools: ids, hashing, Bloom filters, search, rate limits</li>
+<li>Worked high-level designs</li>
+<li>The LLD method and object rules</li>
+<li>Patterns</li>
+<li>Concurrency inside one process</li>
+<li>Memory structures</li>
+<li>Testing a design</li>
+<li>Worked low-level designs</li>
+<li>Checklists, script, and a study plan</li>
+<li>Glossary</li>
+<li>The remaining systems people ask for</li>
+<li>How HLD and LLD meet</li>
+<li>Formula sheet</li>
+</ol>
+
+<h1>1. The two maps</h1>
+<p>A system is a set of parts that cooperate to do a job for a user. System design is deciding those parts, the messages between them, the facts they remember, and the behavior when a part is slow or gone.</p>
+<p><strong>High-level design</strong> answers: which big parts exist, how a request travels, where data lives, how the system grows, and what fails first.</p>
+<p><strong>Low-level design</strong> answers: inside one program, which classes exist, which method calls which, what a table looks like, and how two actions at the same moment stay correct.</p>
+<table>
+<tr><th></th><th>HLD</th><th>LLD</th></tr>
+<tr><td>Zoom</td><td>City</td><td>One building</td></tr>
+<tr><td>You draw</td><td>Boxes and arrows</td><td>Classes, methods, tables</td></tr>
+<tr><td>A finished sentence</td><td>“Open-link checks the cache, then the database, then returns a redirect.”</td><td>“<code>LinkService.open</code> calls <code>cache.get</code>, then <code>repository.findByCode</code>.”</td></tr>
+<tr><td>Done when</td><td>Someone else can see traffic, storage, and failure</td><td>A programmer can write the classes without guessing the rules</td></tr>
+</table>
+<p>HLD chooses the buildings. LLD designs the rooms of the building you were asked to open. A design is complete only when both are filled for the parts that matter.</p>
+
+<h2>The cast, in one sitting</h2>
+<p><strong>Client.</strong> The phone, browser, or other program that starts a request. It draws the screen and sends messages. It does not hold the world’s data.</p>
+<p><strong>Server.</strong> A computer that waits for messages and answers. An <strong>application server</strong> runs your rules. A <strong>stateless</strong> application server stores no user session in its own memory between requests. Any copy can serve any user. The database remembers. The server works and forgets. Stateless servers are easy to multiply: put a new copy behind the door and it is useful immediately.</p>
+<p><strong>Request and response.</strong> One message out, one message back.</p>
+<p><strong>API.</strong> The menu of allowed requests. Each item has a name, inputs, and the shape of the answer.</p>
+<p><strong>Database.</strong> The notebook that still has your facts after a restart. Memory on a server is a whiteboard. Restart wipes it.</p>
+<p><strong>Cache.</strong> A small, fast shelf of copies in front of a slower notebook. A <strong>hit</strong> means the copy was there. A <strong>miss</strong> means you read the notebook and usually refill the shelf.</p>
+<p><strong>Load balancer.</strong> The door that spreads arriving requests across many copies of a server.</p>
+<p><strong>Replication.</strong> Keeping extra copies of data. The <strong>leader</strong> (also called primary) accepts new writes. <strong>Followers</strong> (replicas) copy the leader. <strong>Failover</strong> is a follower becoming the leader after the leader stops.</p>
+<p><strong>Shard.</strong> A horizontal slice of data on its own machine. Users A–M on one notebook, N–Z on another, is sharding.</p>
+<p><strong>Queue.</strong> A tray of work to do soon. The user can get an answer before the slow chore finishes. <strong>Workers</strong> empty the tray.</p>
+<p><strong>CDN.</strong> Content delivery network. Copies of files kept in many cities, close to the user.</p>
+<p><strong>Latency.</strong> How long one person waits after an action. <strong>Throughput.</strong> How many actions finish per second. <strong>QPS</strong> means queries per second.</p>
+<p><strong>Availability.</strong> The fraction of time the system answers successfully. Three nines, 99.9%, is about 8.8 hours of silence in a year. Four nines, 99.99%, is about 53 minutes. Five nines is about 5 minutes.</p>
+<p><strong>Consistency.</strong> After a write succeeds, which readers see that write, and how soon. <strong>Strong consistency</strong> means a read after a successful write sees that write. <strong>Eventual consistency</strong> means readers see it after a delay, and the copies agree if new writes pause.</p>
+<p><strong>Authentication.</strong> Proof of identity. <strong>Authorization.</strong> Proof this identity may do this action.</p>
+<p><strong>Idempotent.</strong> Repeating the same request leaves the same result as doing it once.</p>
+
+<h2>Five questions every design answers</h2>
+<ol>
+<li>Who talks to whom?</li>
+<li>What happens on the important action, step by step?</li>
+<li>What happens when many people do it at once?</li>
+<li>What happens when a machine dies or a network link splits?</li>
+<li>What is remembered, for how long, and who is allowed to change it?</li>
+</ol>
+
+<h1>2. The HLD method</h1>
+<p>Use these seven steps in order. The picture is step 5. Drawing boxes before you know the actions produces a poster, not a design.</p>
+<ol>
+<li><strong>Requirements.</strong> Functional requirements are actions a user can name. Non-functional requirements are qualities: speed, uptime, durability, privacy, cost. Also write a short out-of-scope list so the design stays bounded.</li>
+<li><strong>Size.</strong> Writes per second, reads per second, storage, and sometimes bandwidth. State every assumption.</li>
+<li><strong>API.</strong> The menu, including errors.</li>
+<li><strong>Data model.</strong> Tables or documents, keys, and the lookup the hot path uses.</li>
+<li><strong>Boxes and paths.</strong> The path the user waits on, and the path that runs after the answer.</li>
+<li><strong>Deep dive.</strong> The one or two hard mechanisms. For a short-link service, that mechanism is how a unique short code is born.</li>
+<li><strong>Failure and growth.</strong> What breaks first, and which single addition removes that pressure.</li>
+</ol>
+<div class="note">Say numbers out loud as guesses. A wrong guess you can revise is useful. A silent guess is invisible.</div>
+
+<h1>3. TinyLink, a complete HLD</h1>
+<p>TinyLink turns a long web address into a short one, such as <code>tiny.link/aZ3kQ9</code>. Opening the short one jumps to the long one. This chapter is the reference design. Later chapters point back to it.</p>
+
+<h2>Requirements</h2>
+<p><strong>Functional</strong></p>
+<ul>
+<li>Create a short link from a long address.</li>
+<li>Open a short link and land on the long address.</li>
+<li>Optional custom ending, such as <code>tiny.link/priya</code>.</li>
+<li>Optional expiry.</li>
+<li>A click count the owner can read later.</li>
+</ul>
+<p><strong>Non-functional</strong></p>
+<ul>
+<li>Open is the hot path. It should return in tens of milliseconds and stay up when creates are failing.</li>
+<li>Create can take longer than open.</li>
+<li>Reads outnumber writes by about 100 to 1.</li>
+<li>Short codes generated by the system are not easy to walk in order if we care that strangers cannot scan neighboring links. Custom names are public on purpose.</li>
+</ul>
+<p><strong>Out of scope for version 1:</strong> accounts, editing a link, a chart dashboard, and deleting a link from every browser that already saved a jump.</p>
+
+<h2>Size</h2>
+<p>Assumptions: 100 million new links a month. Each link is opened about 100 times. A row is about 500 bytes. Keep data 5 years. A month is about 2.5 million seconds. Peak is about twice the average.</p>
+<ul>
+<li>Writes: 100,000,000 / 2,500,000 ≈ <strong>40 writes per second</strong>. Peak ≈ 80.</li>
+<li>Reads: 40 × 100 ≈ <strong>4,000 reads per second</strong>. Peak ≈ 8,000.</li>
+<li>Rows in 5 years: 100,000,000 × 12 × 5 = <strong>6 billion</strong>.</li>
+<li>Disk: 6 billion × 500 bytes ≈ <strong>3 terabytes</strong>, plus index overhead. Plan for several times that, because indexes and replicas multiply storage.</li>
+</ul>
+<p>One database can hold a few terabytes. The pressure is 8,000 redirects a second, so the read path needs a cache and more than one application server. The write path is calm.</p>
+
+<h2>API</h2>
+<table>
+<tr><th>Action</th><th>Call</th><th>Inputs</th><th>Success</th></tr>
+<tr><td>Create</td><td><code>POST /links</code></td><td><code>longUrl</code>, optional <code>customCode</code>, optional <code>expiresAt</code>, <code>requestToken</code></td><td><code>201</code> with <code>code</code> and <code>shortUrl</code></td></tr>
+<tr><td>Open</td><td><code>GET /{code}</code></td><td>code in the path</td><td><code>302</code> with a <code>Location</code> header</td></tr>
+<tr><td>Stats</td><td><code>GET /links/{code}/stats</code></td><td>code</td><td><code>200</code> with <code>clickCount</code></td></tr>
+</table>
+<p>Status <strong>302</strong> means “jump there for this request.” Browsers come back next time, so expiry and click counting still see the visit. Status <strong>301</strong> means “this name permanently means that address.” Browsers may remember and skip you next time. TinyLink uses 302 because expiry and counts need every open to touch the service.</p>
+<p>Errors: <code>400</code> the address is invalid or too long. <code>404</code> unknown code. <code>409</code> custom code already taken. <code>410</code> the link existed and is expired. <code>429</code> the caller is over the rate limit.</p>
+
+<h2>Data</h2>
+<pre>links
+  id            bigint primary key
+  code          varchar unique
+  long_url      text
+  created_at    timestamp
+  expires_at    timestamp null
+  click_count   bigint
+  request_token varchar unique null</pre>
+<p>The hot lookup is by <code>code</code>, so that column has a unique index. <code>request_token</code> makes create safe to retry: the same token inserts once and returns the same row. The long address is small text, so it lives in the row. A photo product would put the file in object storage and store only a pointer.</p>
+
+<h2>City map</h2>
+<pre>Browser
+  -&gt; Load balancer
+    -&gt; Stateless API servers
+         -&gt; Cache, key = code
+         -&gt; SQL database
+         -&gt; Click queue -&gt; count workers -&gt; database</pre>
+<p><strong>Create path.</strong> Validate the URL. If the caller supplied a custom code, try to insert it. Otherwise take the next id, encode it, insert the row. Return the short URL. Fill the cache only after the insert commits, or leave the first open to fill it.</p>
+<p><strong>Open path.</strong> Read cache. On a miss, read the database and fill the cache. If missing, 404. If expired, 410. Otherwise publish a click event and return 302. The person who clicked waits through the cache or database read. The counter update happens after the jump, on a worker.</p>
+
+<h2>How a short code is born</h2>
+<p><strong>Base62</strong> uses 62 symbols: digits, lowercase letters, uppercase letters. Seven characters give 62<sup>7</sup>, about 3.5 trillion names. Five years of TinyLink needs about 6 billion names, so 7 characters is enough room.</p>
+<p>A database sequence can hand out the next <code>id</code>. At higher write speed, each application server reserves a <strong>block</strong>, for example “I own ids 1,000,000 through 1,999,999,” and hands those out from memory. When the block is used up, it reserves another. If a server dies mid-block, the unused ids are skipped. Holes are harmless. Duplicate ids are not.</p>
+<p>Encoding is repeated division by 62. Remainders become characters. The same id always becomes the same code. Decoding reverses it, which tells you the shard later if you shard by id range.</p>
+<p>Custom codes skip the encoder. The unique index on <code>code</code> lets one insert win. The loser gets 409.</p>
+<p>A hash of the long URL can also make a code. Two different URLs can hash to the same characters. You then check the notebook and retry with more characters. The counter design avoids that collision on the ordinary path, so this design uses the counter. Hashing is a fair choice when you want the same long URL to keep the same short code without a lookup table of ids, and you accept collision handling.</p>
+
+<h2>What breaks, and the next box</h2>
+<table>
+<tr><th>Pressure</th><th>Response</th></tr>
+<tr><td>8,000 opens per second</td><td>Many stateless servers, plus a cache of code to long URL</td></tr>
+<tr><td>Cache process dies</td><td>Servers read the database. Slower, still correct</td></tr>
+<tr><td>Database leader dies</td><td>A follower is promoted</td></tr>
+<tr><td>Two custom names collide</td><td>Unique index, one winner, 409 for the other</td></tr>
+<tr><td>Click counts lag by seconds</td><td>Accepted. The queue keeps the redirect fast</td></tr>
+<tr><td>Crash after insert, before the response</td><td>Client retries with the same request token</td></tr>
+<tr><td>One code is suddenly famous</td><td>One cache entry serves everyone. Popularity helps</td></tr>
+<tr><td>Notebook grows past one machine</td><td>Shard by id range. Decode the code to find the shard</td></tr>
+</table>
+
+<h1>4. Size math you can do on paper</h1>
+<p>Use powers of ten so the arithmetic fits in your head.</p>
+<table>
+<tr><th>Fact</th><th>Handy figure</th></tr>
+<tr><td>Seconds in a day</td><td>about 10<sup>5</sup> (86,400)</td></tr>
+<tr><td>Seconds in a month</td><td>about 2.5 × 10<sup>6</sup></td></tr>
+<tr><td>Seconds in a year</td><td>about 3 × 10<sup>7</sup></td></tr>
+<tr><td>1 million requests a day</td><td>about 12 per second</td></tr>
+<tr><td>1 million requests a month</td><td>well under 1 per second</td></tr>
+<tr><td>A character</td><td>about 1 byte of text, more if you store rich Unicode details</td></tr>
+<tr><td>A million bytes</td><td>1 MB</td></tr>
+<tr><td>A thousand MB</td><td>1 GB</td></tr>
+<tr><td>A thousand GB</td><td>1 TB</td></tr>
+<tr><td>A typical server network card</td><td>1 to 10 gigabits per second. Divide by 8 to get bytes</td></tr>
+</table>
+<p><strong>QPS</strong> = total actions in the period ÷ seconds in the period. Then multiply by a peak factor, often 2× for a daily product and higher for a product that spikes at a single event.</p>
+<p><strong>Storage</strong> = rows × bytes per row × replicas × years. Add a factor of 2 or more for indexes and waste. Object storage for video is separate: minutes × bitrate. A 1 Mbps stream for one hour is 1 × 3600 / 8 ≈ 450 MB.</p>
+<p><strong>Cache memory</strong> = hot keys × value size × overhead. You rarely cache everything. Cache the working set, the slice that is read over and over. If 20% of links receive 80% of opens, size the cache for that 20% plus room to grow.</p>
+<p><strong>Bandwidth</strong> = QPS × bytes on the wire. Redirects are small. Video is large. A product that moves pictures will hit the network before it hits the CPU.</p>
+<p>Write the assumption beside the result. “40 writes/s if we take 100 million creates a month.” When the real number is 10×, you know which box to revisit.</p>
+
+<h1>5. APIs, HTTP, and contracts</h1>
+<p>An API is a promise. Clients depend on the name, the inputs, the outputs, and the errors. Changing a promise without a plan breaks people you cannot see.</p>
+
+<h2>HTTP methods</h2>
+<table>
+<tr><th>Method</th><th>Usual meaning</th><th>Safe to retry?</th></tr>
+<tr><td>GET</td><td>Read. Should not change data</td><td>Yes</td></tr>
+<tr><td>POST</td><td>Create, or run an action</td><td>Only if you add an idempotency key</td></tr>
+<tr><td>PUT</td><td>Replace this resource with this body</td><td>Yes, if the same body replaces the same resource</td></tr>
+<tr><td>PATCH</td><td>Change some fields</td><td>Depends on the patch. “Set status to paid” is safe to retry. “Add 1 to count” is not, unless the server deduplicates</td></tr>
+<tr><td>DELETE</td><td>Remove</td><td>Yes. Deleting twice ends with the resource gone</td></tr>
+</table>
+<p>GET, PUT, and DELETE are designed to be idempotent. POST is the one you protect with a <strong>request token</strong> (idempotency key): the server stores the token with the result and returns the original result on a replay.</p>
+
+<h2>Status codes worth memorizing</h2>
+<table>
+<tr><th>Code</th><th>Meaning</th></tr>
+<tr><td>200</td><td>Success with a body</td></tr>
+<tr><td>201</td><td>Created</td></tr>
+<tr><td>202</td><td>Accepted. The work will finish later</td></tr>
+<tr><td>204</td><td>Success with an empty body</td></tr>
+<tr><td>301 / 302</td><td>Redirect. 301 may be cached by the client as permanent. 302 is for this request</td></tr>
+<tr><td>400</td><td>The client sent something invalid</td></tr>
+<tr><td>401</td><td>You have not proved who you are</td></tr>
+<tr><td>403</td><td>We know who you are, and you may not do this</td></tr>
+<tr><td>404</td><td>No such resource</td></tr>
+<tr><td>409</td><td>Conflict, such as a duplicate name</td></tr>
+<tr><td>410</td><td>Gone. It used to exist</td></tr>
+<tr><td>429</td><td>Too many requests</td></tr>
+<tr><td>500</td><td>The server failed</td></tr>
+<tr><td>502 / 503 / 504</td><td>A neighbor failed, we are unavailable, or a neighbor timed out</td></tr>
+</table>
+
+<h2>Shapes of a good contract</h2>
+<ul>
+<li>Nouns in paths: <code>/links/{code}</code>. Verbs belong in methods, or in a clearly named action when HTTP has no natural verb.</li>
+<li>Ids in the path. Filters in the query string: <code>/messages?conversationId=9&amp;limit=50</code>.</li>
+<li>One error body shape everywhere: a code, a human message, and a field name when a field is wrong.</li>
+<li>Version the contract when a change would break old clients. A path prefix <code>/v2</code> is the blunt tool. Adding optional fields is usually safe. Removing or renaming fields is a break.</li>
+<li>Paginate lists. <strong>Offset pagination</strong> (<code>page=5&amp;limit=20</code>) is easy and gets slow and skippy when rows are inserted at the top. <strong>Cursor pagination</strong> returns “give me 20 items older than this id.” It stays fast because it uses the index, and it stays stable while new rows arrive.</li>
+</ul>
+
+<h2>Timeouts, from the caller’s side</h2>
+<p>Every call to another machine has a deadline. A client that waits forever holds a worker on your server, which holds a worker on the next server. Pick a budget for the whole user request, then give each hop a smaller budget. If the hop misses the budget, fail that hop and follow your retry rule.</p>
+
+<h1>6. Data that survives a restart</h1>
+<p>Choose storage from the questions you ask, not from fashion.</p>
+
+<h2>SQL databases</h2>
+<p>Data sits in tables of rows and columns. A <strong>primary key</strong> identifies one row. A <strong>foreign key</strong> is a column that points at a primary key in another table, such as <code>likes.photo_id</code> pointing at <code>photos.id</code>. The database can refuse a like that points at a missing photo.</p>
+<p>SQL is a strong fit when facts must match, when you join them in different combinations, and when a bundle of writes must all stick or all roll back. Users, orders, money, seats, and short links belong here.</p>
+<p><strong>Normalization</strong> means each fact lives in one place.</p>
+<ul>
+<li><strong>First normal form:</strong> each column holds one value, not a secret list stuffed into a text field. “tags = cat,dog” makes “find every photo tagged cat” a scan.</li>
+<li><strong>Second:</strong> every non-key column depends on the whole key, not on a piece of it.</li>
+<li><strong>Third:</strong> a non-key column depends on the key, not on another non-key column. A user’s city belongs on the user row. Copying the city onto every photo means a move requires updating every photo.</li>
+</ul>
+<p>Sometimes you copy a fact on purpose. That copy is <strong>denormalization</strong>. You do it when a join on the hot path is too expensive, and you accept the job of keeping the copy honest.</p>
+
+<h2>Indexes</h2>
+<p>An index is an extra structure that answers a lookup without reading every row. The usual structure is a <strong>B-tree</strong>: ordered, good for equality and for ranges such as “photos newer than Tuesday.” A <strong>hash index</strong> answers equality and does not help ranges.</p>
+<p>A <strong>composite index</strong> on <code>(user_id, created_at)</code> serves “this user’s newest photos.” It also serves “this user” alone, because <code>user_id</code> is the leftmost column. It does not serve “all photos from Tuesday” by itself, because <code>created_at</code> is not the leftmost column. This is the <strong>leftmost prefix</strong> rule.</p>
+<p>A <strong>covering index</strong> contains every column the query needs, so the database can answer from the index alone.</p>
+<p>Indexes speed reads and cost writes, because every insert and update maintains them. Index the lookups you actually run. A table with ten unused indexes pays for those ten on every write.</p>
+
+<h2>NoSQL, in three useful shapes</h2>
+<p><strong>Key-value.</strong> One key, one blob. Session data, cache, shopping cart, “feed for user 42.” Extremely fast when the access is always by that key.</p>
+<p><strong>Document.</strong> A key and a JSON-like document you can query inside. A good fit when one aggregate, such as a product with its variants, is always loaded together, and different products have slightly different fields.</p>
+<p><strong>Wide-column.</strong> A row key and many columns, spread across machines. A fit for huge write streams such as time-series events and messages keyed by conversation.</p>
+<p>These systems often push joins and multi-row transactions up into your code. You pick them when the key-based access and the scale are the point.</p>
+
+<h2>Object storage</h2>
+<p>Photos, video, and backups go in object storage: a giant closet of blobs addressed by a key. The database stores the key, the owner, and the time. You do not put a 4 MB photo inside every SQL row. Object storage is cheap per byte and slow compared with a cache of small metadata. Put a CDN in front when many users download the same blob.</p>
+
+<h2>Choosing</h2>
+<table>
+<tr><th>You mostly…</th><th>Lean toward</th></tr>
+<tr><td>Join orders, users, and payments, and need transactions</td><td>SQL</td></tr>
+<tr><td>Fetch one value by one key at very high QPS</td><td>Key-value</td></tr>
+<tr><td>Store large files</td><td>Object storage, plus SQL for metadata</td></tr>
+<tr><td>Append a huge stream of events</td><td>A log or wide-column store</td></tr>
+<tr><td>Search words inside text</td><td>A search index, fed from the source of truth</td></tr>
+</table>
+<p>The <strong>source of truth</strong> is the store whose answer wins when copies disagree. Caches, search indexes, and feed timelines are derived. They can be rebuilt from the source of truth.</p>

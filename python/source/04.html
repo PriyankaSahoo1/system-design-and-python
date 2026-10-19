@@ -1,0 +1,135 @@
+<h1>23. Interview questions</h1>
+<p>These are the questions interviewers use to see whether the concepts in this book are available when you speak. Each one has the point of the question and an answer you can say aloud. A strong answer is short, then one example, then the trap if there is one. You do not need to recite the paragraph.</p>
+
+<h2>Names and objects</h2>
+<p><strong>What is the difference between <code>is</code> and <code>==</code>?</strong> <code>==</code> asks whether the values compare equal. <code>is</code> asks whether both names point at the same object. Use <code>is</code> for <code>None</code>. Two lists with the same items are <code>==</code> and are not <code>is</code>.</p>
+<p><strong>Are arguments passed by value or by reference?</strong> Neither, in the C++ sense. The parameter name is stuck on the same object the caller passed. Reassigning the parameter moves only the local label. Mutating the object, such as <code>append</code>, is visible to the caller because there is one object.</p>
+<p><strong>What is mutable and what is immutable?</strong> Immutable: <code>int</code>, <code>float</code>, <code>str</code>, <code>tuple</code>, <code>frozenset</code>, <code>bytes</code>. Mutable: <code>list</code>, <code>dict</code>, <code>set</code>, <code>bytearray</code>, and most class instances. Immutability is why strings and tuples can be dict keys and why “changing” an int actually binds a new object.</p>
+<p><strong>Why did changing one list change another?</strong> Both names were labels on one list. Assignment does not copy. A shallow copy copies the outer list and still shares the inner objects. <code>copy.deepcopy</code> copies the inners too.</p>
+<p><strong>What does <code>a, b = b, a</code> do?</strong> The right side builds a tuple of the current values, then the left side unpacks it. No temporary variable is required.</p>
+
+<h2>Types and text</h2>
+<p><strong>Why is <code>0.1 + 0.2</code> not <code>0.3</code>?</strong> Floats are binary fractions with limited bits. Those decimals are not exact in binary. For money, use <code>decimal.Decimal</code> constructed from strings.</p>
+<p><strong>What is the difference between <code>str</code> and <code>bytes</code>?</strong> <code>str</code> is Unicode text. <code>bytes</code> is raw octets. Convert with <code>encode</code> and <code>decode</code>, usually UTF-8. You cannot mix them with <code>+</code>.</p>
+<p><strong>How do you join many strings?</strong> <code>" ".join(parts)</code>. Repeated <code>+=</code> in a loop builds many intermediate strings. Join walks the pieces once.</p>
+<p><strong>What is an f-string?</strong> A string literal with expressions in braces, evaluated when that line runs: <code>f"{name} scored {score}"</code>.</p>
+<p><strong>Which values are false?</strong> <code>None</code>, <code>False</code>, numeric zero, and empty containers and strings. An empty list is false and is not <code>None</code>. Test absence with <code>is None</code>.</p>
+
+<h2>Collections</h2>
+<p><strong>When do you pick a list, a tuple, a dict, or a set?</strong> A list is an ordered collection you edit. A tuple is a fixed record. A dict is a lookup by key. A set is unique items with fast membership. Dict keys and set items must be hashable.</p>
+<p><strong>Why can a tuple be a dict key while a list cannot?</strong> A key’s hash must stay stable. A list can change after insertion, so it is unhashable. A tuple is hashable only when every item inside it is hashable.</p>
+<p><strong>Are dicts ordered?</strong> Yes. Since Python 3.7, insertion order is part of the language. That does not make a dict a priority queue. Use <code>heapq</code> when you always need the smallest item.</p>
+<p><strong>What is the cost of <code>in</code>?</strong> Average constant time for a dict or a set. Linear for a list or a tuple, because those are scanned.</p>
+<p><strong>What do <code>append</code> and <code>insert(0, x)</code> cost?</strong> Append is amortized constant time. Insert at the front moves every later item, so it is linear. A queue that grows at both ends wants <code>collections.deque</code>.</p>
+<p><strong><code>list</code> versus tuple in an interview sentence.</strong> Same indexing and slicing. A list can grow and change slots. A tuple cannot, so it can be a key and it signals a fixed shape.</p>
+<p><strong>What does <code>sorted</code> return, and what does <code>list.sort</code> return?</strong> <code>sorted</code> returns a new list. <code>list.sort</code> sorts in place and returns <code>None</code>. Both take <code>key</code> and <code>reverse</code>. Python’s sort is stable: equal keys keep their original order.</p>
+
+<h2>Control flow and functions</h2>
+<p><strong>What is a default-argument bug?</strong> Defaults are created once, at definition. <code>def add(item, bucket=[])</code> shares one list across calls. Use <code>bucket=None</code> and create a new list inside the function.</p>
+<p><strong>What are <code>*args</code> and <code>**kwargs</code>?</strong> <code>*args</code> collects extra positional arguments into a tuple. <code>**kwargs</code> collects extra keyword arguments into a dict. In a call, <code>*seq</code> and <code>**mapping</code> unpack outward.</p>
+<p><strong>What is LEGB?</strong> The lookup order for a name: local, enclosing function, global module, builtin. Assignment inside a function makes the name local for the whole function. <code>global</code> and <code>nonlocal</code> are how you assign further out.</p>
+<p><strong>What is a closure?</strong> A function that uses variables from the function that created it, after that outer call has returned. In a loop, every lambda sees the final value of the loop variable unless you bind the current value as a default: <code>lambda i=i: i</code>.</p>
+<p><strong>What is the <code>else</code> on a <code>for</code> loop?</strong> It runs when the loop ended without <code>break</code>. It is the “not found” branch of a search.</p>
+<p><strong>What does <code>//</code> do?</strong> Floor division. It divides and rounds toward negative infinity, which is not the same as truncating toward zero for negative numbers.</p>
+
+<h2>Classes</h2>
+<p><strong>What is <code>self</code>?</strong> The instance the method was called on. You declare it as the first parameter. The call <code>obj.method()</code> passes <code>obj</code> in for you.</p>
+<p><strong><code>@classmethod</code> versus <code>@staticmethod</code> versus a normal method.</strong> A normal method receives the instance. A classmethod receives the class, which is how alternate constructors stay correct for subclasses. A staticmethod receives neither. If it does not need the class, a module-level function is often clearer.</p>
+<p><strong>What is <code>@property</code>?</strong> A method that callers read like an attribute. Use it when a stored field later becomes a calculation and you do not want to change every caller.</p>
+<p><strong><code>__str__</code> versus <code>__repr__</code>.</strong> <code>__repr__</code> is the unambiguous developer form, ideally enough to see how the value was built. <code>__str__</code> is the friendly form <code>print</code> prefers. If only <code>__repr__</code> exists, <code>print</code> uses it.</p>
+<p><strong><code>__init__</code> versus <code>__new__</code>.</strong> <code>__new__</code> creates the instance and is the place to intervene for immutables such as <code>tuple</code> subclasses. <code>__init__</code> initializes an instance that already exists. Almost every class you write only needs <code>__init__</code>.</p>
+<p><strong>What is the MRO?</strong> The method resolution order: the sequence of classes Python searches for an attribute. Single inheritance is a straight line. Multiple inheritance uses the C3 order. Read <code>Class.__mro__</code> when <code>super()</code> surprises you.</p>
+<p><strong>What does a leading underscore mean?</strong> <code>_name</code> means internal by convention. <code>__name</code> is mangled to <code>_Class__name</code> so a subclass does not override it by accident. Neither one is a security barrier.</p>
+<p><strong>Why a dataclass?</strong> The class mostly stores fields. The decorator writes <code>__init__</code>, <code>__repr__</code>, and <code>__eq__</code>. <code>frozen=True</code> makes instances hashable if the fields are hashable.</p>
+<p><strong>What is duck typing?</strong> If an object has the methods you call, it is acceptable. You do not require a particular base class. A <code>Protocol</code> is that idea written down for a type checker.</p>
+
+<h2>Errors, files, and <code>with</code></h2>
+<p><strong>What runs in <code>try</code>, <code>except</code>, <code>else</code>, and <code>finally</code>?</strong> <code>try</code> is the risky work. <code>except</code> handles a matching exception. <code>else</code> runs only when <code>try</code> did not raise. <code>finally</code> runs in every case, including after a <code>return</code>, and is where you release a resource if you are not using <code>with</code>.</p>
+<p><strong>Why avoid a bare <code>except:</code>?</strong> It also catches <code>KeyboardInterrupt</code> and <code>SystemExit</code>, which inherit from <code>BaseException</code>, not <code>Exception</code>. Catch the type you can handle.</p>
+<p><strong>What is EAFP?</strong> Easier to ask forgiveness than permission. Try the operation and catch <code>KeyError</code> or <code>FileNotFoundError</code>. A check followed by the action can still fail if something changes in between.</p>
+<p><strong>What does <code>with</code> guarantee?</strong> <code>__enter__</code> runs at the start and <code>__exit__</code> runs when the block ends, including when it raises or returns. That is why files are opened with <code>with</code>. Always pass <code>encoding</code> for text.</p>
+<p><strong>What is <code>if __name__ == "__main__"</code>?</strong> That block runs only when the file is started directly. Importing the file sets <code>__name__</code> to the module name, so the program does not start as a side effect of the import. On Windows, <code>multiprocessing</code> needs this guard.</p>
+
+<h2>Iterators, generators, and decorators</h2>
+<p><strong>Iterable versus iterator.</strong> An iterable can produce an iterator, which a <code>for</code> loop does for you. An iterator remembers its position and returns the next item until it raises <code>StopIteration</code>. A list is iterable. Calling <code>iter</code> on it gives an iterator.</p>
+<p><strong>Why a generator?</strong> <code>yield</code> produces one item at a time and pauses. A large file or a long range does not become one giant list. Calling the generator function does not run the body. It returns the generator. A generator expression is spent after one walk.</p>
+<p><strong>List comprehension versus generator expression.</strong> Square brackets build the whole list now. Parentheses build a generator that computes on demand. Use the list when you need length, indexing, or several walks.</p>
+<p><strong>What is a decorator?</strong> A function that takes a function and returns a function. <code>@deco</code> above <code>def</code> is the same as <code>fn = deco(fn)</code> after the definition. Use <code>functools.wraps</code> so the wrapper keeps the original name and docstring.</p>
+<p><strong>What does <code>functools.lru_cache</code> assume?</strong> The function is pure: the same arguments always mean the same result, and the work is worth storing. A cached function that reads the clock or a global returns a stale answer.</p>
+
+<h2>Modules and types</h2>
+<p><strong>What is a virtual environment?</strong> A private folder of third-party packages for one project, so two projects can depend on different versions. Create it with <code>python -m venv .venv</code> and install with the <code>pip</code> inside it.</p>
+<p><strong>Do type hints change runtime behavior?</strong> No. The interpreter does not enforce them. A type checker such as pyright or mypy reads them as a separate step. <code>str | None</code> means a string or <code>None</code>.</p>
+<p><strong>What is a <code>Protocol</code>?</strong> A structural type. Any object with the listed methods matches, even with no shared base class. That is duck typing for the checker.</p>
+
+<h2>Concurrency</h2>
+<p><strong>What is the GIL?</strong> In CPython, a lock that allows one thread to run Python bytecode at a time. Threads still help for waiting on network or disk, because that waiting releases the lock. A pure Python CPU loop does not get faster with more threads. Use processes, or native code that releases the lock, for CPU work.</p>
+<p><strong>Thread, process, or asyncio?</strong> Threads for blocking I/O with ordinary libraries. Processes for CPU-bound Python. Asyncio for many concurrent sockets in one thread, using libraries that await. A blocking call inside <code>async def</code> freezes the loop.</p>
+<p><strong>Is <code>n = n + 1</code> safe across threads?</strong> No. Two threads can read the same <code>n</code> and both write the same next value. Use a lock, or do not share the variable. List <code>append</code> of one item is a different, simpler operation. Do not generalize from it.</p>
+<p><strong>What is a race?</strong> Two threads use the same data, the result depends on the order they run, and that order is not fixed. The fix is not to share, or to make the critical update atomic with a lock or a queue.</p>
+
+<h2>Short coding questions</h2>
+<p>Say the idea first, then write it. Handle the empty input aloud so the interviewer hears that you thought about it.</p>
+<p><strong>Count words in a file, case-insensitive.</strong> Open with <code>pathlib</code> or <code>with</code>, walk lines, <code>split</code>, and add to a <code>Counter</code> after <code>lower</code>. Do not read a huge file as one string if line-by-line works.</p>
+<pre>from collections import Counter
+from pathlib import Path
+
+def word_counts(path):
+    counts = Counter()
+    text = Path(path).read_text(encoding="utf-8")
+    for word in text.lower().split():
+        counts[word] += 1
+    return counts</pre>
+<p><strong>Find the first repeated character.</strong> Walk the string with a set of characters already seen. The first character already in the set is the answer. If the loop ends, there is no repeat. This is linear time and uses memory proportional to the alphabet you actually saw.</p>
+<pre>def first_repeat(text):
+    seen = set()
+    for char in text:
+        if char in seen:
+            return char
+        seen.add(char)
+    return None</pre>
+<p><strong>Group words that are anagrams.</strong> The key is the letters in sorted order. A dict of lists collects words that share a key.</p>
+<pre>def group_anagrams(words):
+    groups = {}
+    for word in words:
+        key = "".join(sorted(word))
+        groups.setdefault(key, []).append(word)
+    return list(groups.values())</pre>
+<p><strong>Two numbers in a list that add to a target.</strong> One pass, a dict from value already seen to its index. For each new number, ask whether <code>target - number</code> is already in the dict. Average linear time. Say what you return if no pair exists.</p>
+<pre>def two_sum(nums, target):
+    seen = {}
+    for index, num in enumerate(nums):
+        need = target - num
+        if need in seen:
+            return seen[need], index
+        seen[num] = index
+    return None</pre>
+<p><strong>Flatten one level of nested lists.</strong> A double comprehension or a loop that extends. Say whether deeper nesting is in scope. One level is <code>[item for row in rows for item in row]</code>.</p>
+<p><strong>Remove duplicates and keep the first-seen order.</strong> A dict preserves insertion order. <code>list(dict.fromkeys(items))</code> does it. A set would lose order.</p>
+<p><strong>Write a timer decorator.</strong> Take the function, return a wrapper that uses <code>*args, **kwargs</code>, records time around the call, and returns the original result. Apply <code>functools.wraps</code>.</p>
+<pre>import functools
+import time
+
+def timed(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        start = time.perf_counter()
+        try:
+            return func(*args, **kwargs)
+        finally:
+            elapsed = time.perf_counter() - start
+            print(f"{func.__name__} took {elapsed:.4f}s")
+    return wrapper</pre>
+<p><strong>Implement a tiny LRU in words.</strong> A dict plus order. On get, move the key to the most recently used end. On put past capacity, drop the least recently used key. The book’s system-design volume has a full class. In a Python interview, describe those two structures and the two operations before you write the nodes.</p>
+
+<h2>Questions you can ask back</h2>
+<p>When they invite questions, pick one that shows you care how the code is maintained: how they test, how they pin dependencies, and whether CPU work and I/O work are separated in the service you would join. You are not proving you read a list. You are showing you know which concepts touch the job.</p>
+
+<h2>How to practice</h2>
+<ol>
+<li>Cover the answer. Say yours out loud in under a minute.</li>
+<li>Uncover and keep only the sentence you missed.</li>
+<li>For each coding question, write it in a file and run it, including the empty input and a one-item input.</li>
+<li>Stop when you can answer the GIL, the mutable default, <code>is</code> versus <code>==</code>, a generator, and a decorator without looking. Those five separate people who have used Python from people who have read a list of keywords.</li>
+</ol>
+<p class="end">End of the interview questions.</p>

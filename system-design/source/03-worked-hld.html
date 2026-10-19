@@ -1,0 +1,204 @@
+<h1>21. Worked high-level designs</h1>
+<p>Each design follows the same spine and only spends words on what is new. Numbers are assumptions you should recompute in practice.</p>
+
+<h2>21.1 Rate limiter</h2>
+<p><strong>Job.</strong> Allow N actions per identity per window. Refuse the rest with 429.</p>
+<p><strong>Needs.</strong> Correct enough under several application servers. Fast, because it sits on every request. A small burst may be allowed. Different routes have different allowances.</p>
+<p><strong>Size.</strong> At 8,000 requests per second, the limiter runs 8,000 checks a second. Each check is a cache increment, not a SQL transaction.</p>
+<p><strong>Design.</strong> A shared cache holds a token bucket per key. The key is <code>userId:route</code> or <code>ip:route</code>. The value is the token count and the last refill timestamp. Refill is computed from elapsed time, so you do not need a timer per key: <code>tokens = min(capacity, tokens + elapsed × rate)</code>. Then subtract one if a token remains.</p>
+<p>Do the read-modify-write inside one atomic cache script so two servers cannot both spend the last token. Put the limiter in the gateway and also in the service that must protect itself if the gateway is bypassed.</p>
+<p><strong>Fails.</strong> If the cache is down, decide in advance: fail open (allow traffic) or fail closed (refuse). Login limits fail closed. A homepage may fail open. State the choice.</p>
+
+<h2>21.2 Unique id service</h2>
+<p><strong>Job.</strong> Mint ids that are unique, roughly time-ordered, and available when any one application server is up.</p>
+<p><strong>Design.</strong> Snowflake-style 64-bit numbers. Reserve 1 bit, 41 bits of milliseconds since a custom epoch (about 69 years), 10 bits of machine id (1024 machines), 12 bits of sequence (4096 ids per machine per millisecond). A machine that would exceed 4096 in the same millisecond waits until the next millisecond. Machine ids come from a small coordinator or from the orchestration system, and they are unique while the process lives.</p>
+<p>Clock going backward is the bug. If the new timestamp is older than the last one used, wait until the clock catches the last timestamp, or refuse to mint and alarm. Do not reuse sequence numbers in the past.</p>
+
+<h2>21.3 Chat</h2>
+<p><strong>Functional.</strong> One-to-one and group messages, history, online presence, delivered and read marks, and a push when the person is offline.</p>
+<p><strong>Non-functional.</strong> Delivery under a second when both are online. History durable. Order stable inside one conversation. A group may have hundreds of members; a broadcast channel is a different product.</p>
+<p><strong>Size assumption.</strong> 50 million daily senders, 20 messages each, is 1 billion messages a day, about 12,000 writes per second average, perhaps 30,000 at peak. Each message is about 200 bytes of metadata plus text. A year is on the order of tens of terabytes, sharded.</p>
+<p><strong>API and connection.</strong> WebSocket for send and for live receive. <code>GET /conversations/{id}/messages?before=cursor</code> for history. <code>POST</code> is a fallback when the socket is down.</p>
+<p><strong>Data.</strong> Conversations, members, and messages keyed by <code>(conversation_id, message_id)</code>. Shard by conversation id so one history is one shard and stays ordered. A per-conversation increasing id, or a Snowflake id plus a gap-filling rule, gives order. Inbox pointer: for each user, the list of conversation ids and the latest message id, so the chat list is one read.</p>
+<p><strong>Path.</strong> Client sends on its socket to Gateway A. Gateway A writes the message to the store, then looks up each member’s gateway in the connection registry and forwards. If a member has no gateway, it writes a push-notification job. The sender receives an ack with the message id. Recipients send delivered and read events, which update small rows and fan out the same way.</p>
+<p><strong>Presence</strong> is a TTL key in the cache, refreshed by heartbeat. It is allowed to be wrong for seconds.</p>
+<p><strong>Hard parts.</strong> Gateway fanout for a large group: write once, then push to N gateways, not N database copies of the body. Deduplicate retries with a client message token. Do not let one huge group stall a worker: cap fanout parallelism. Media goes to object storage; the message holds the key.</p>
+
+<h2>21.4 Photo feed</h2>
+<p><strong>Functional.</strong> Post a photo and a caption, follow people, open a home feed, like, comment.</p>
+<p><strong>Non-functional.</strong> Feed open is fast. Posting returns when the photo is safe to acknowledge, not when every follower’s feed is updated. A celebrity can have millions of followers.</p>
+<p><strong>Size assumption.</strong> 10 million daily posters, one photo each. 100 million daily feed opens. Photos average 2 MB. That is about 20 TB of new images a day before you count replicas and thumbnails. Metadata is the smaller SQL problem. Bytes are the object-storage and CDN problem.</p>
+<p><strong>Path, post.</strong> Client uploads the file to object storage, directly with a signed upload URL so the bytes do not pass through your application server. The server writes the photo row, enqueues thumbnail and abuse-scan jobs, and enqueues fanout. The client sees the post as soon as the row exists. Followers see it when fanout or read-merge reaches them.</p>
+<p><strong>Path, feed.</strong> Hybrid fanout from chapter 14. Cache the first page of each user’s prebuilt feed. Likes can be counted in a cache and flushed, with the exact count allowed to lag, or stored as rows if you must list who liked.</p>
+<p><strong>Data.</strong> Users, follows (follower_id, followee_id), photos (id, owner, object key, time), feed entries (user_id, photo_id, time). Shard follows and feed entries by the reader’s user id, because the hot read is “my feed.” Shard photos by photo id. The celebrity is excluded from write-fanout and merged at read.</p>
+<p><strong>Hard parts.</strong> Upload resumes for bad networks: object storage multipart upload. Thumbnail so the feed never downloads full-size images. Authorization on every photo URL: private photos use signed URLs that expire, public photos sit on the CDN.</p>
+
+<h2>21.5 Notifications</h2>
+<p><strong>Job.</strong> Tell a user that something happened, on the channels they allow: in-app, mobile push, email, maybe SMS.</p>
+<p><strong>Path.</strong> A service emits an event: “photo 9 was liked by user 3.” A notification service looks up subscribers and preferences, writes an in-app row, and enqueues one job per external channel. Channel workers talk to providers. A preference of “no email” drops that job. A rate cap stops one viral photo from emailing you fifty times in a minute: collapse them into “Priya and 49 others liked your photo.”</p>
+<p><strong>Data.</strong> Notification rows for the in-app inbox, keyed by user id. Delivery log with provider ids so retries are idempotent. Preferences per user per event type per channel.</p>
+<p><strong>Hard parts.</strong> Provider outages go to retries and a dead-letter queue. Idempotency key is the event id plus channel plus user. Quiet hours are a product rule in the worker, not a special database.</p>
+
+<h2>21.6 Video streaming</h2>
+<p><strong>Functional.</strong> Upload a video, play it, pause, and switch quality as the network changes.</p>
+<p><strong>Non-functional.</strong> Playback starts quickly. Upload may take minutes. Many viewers watch a few popular videos.</p>
+<p><strong>Upload.</strong> Multipart upload to object storage. A row is created in a “processing” state. A queue runs transcoding into several bitrates and splits each into short segments (a few seconds). A manifest file lists the segments. When the ladder of qualities is ready, the row becomes “playable.”</p>
+<p><strong>Playback.</strong> The client fetches the manifest from your API or from the CDN, then fetches segments from the CDN. The client picks a bitrate that fits the current bandwidth. Your origin sees a segment only on a CDN miss.</p>
+<p><strong>Data.</strong> Video metadata in SQL. Segments in object storage. View counts via a queue, like TinyLink clicks. Recommendations are an offline or nearline job writing “related ids” back to a store the play page can read quickly.</p>
+<p><strong>Hard parts.</strong> Popular videos are a CDN problem, not an application-server problem. Live video is the same shape with smaller segment duration and a manifest that grows. Protect upload with quotas so one client cannot fill the bucket.</p>
+
+<h2>21.7 File sync</h2>
+<p><strong>Job.</strong> A folder on a laptop stays in agreement with a folder in the cloud and with other devices.</p>
+<p><strong>Design.</strong> Split files into chunks of a few megabytes. Hash each chunk. Upload only chunks the server does not have, which also deduplicates identical chunks across users if you are careful about privacy and encryption. Metadata is a tree: folders, file names, and an ordered list of chunk hashes. Each save creates a new version rather than overwriting the only copy, so you can undo.</p>
+<p><strong>Sync.</strong> The client sends a local change list. The server applies it when it does not conflict. Two devices editing the same file while offline create two versions; the product shows a conflict and keeps both. A cursor per device says “I have seen everything up to change 500.”</p>
+<p><strong>Hard parts.</strong> Chunk hashes must be strong. Encryption: if the server stores only ciphertext, deduplication across users gets much harder, and you should say which goal wins. Sharing a folder is an authorization list on the metadata, plus a way to revoke.</p>
+
+<h2>21.8 Search and autocomplete</h2>
+<p><strong>Search.</strong> Documents live in the source database. An indexer tails the change stream and updates an inverted index. Queries hit a search service that fans out to index shards and merges the top results. Cache frequent queries. Ranking features that change slowly can be stored beside each post; features that change every second, such as “liked one second ago,” are applied only to the top few candidates.</p>
+<p><strong>Autocomplete.</strong> On each keystroke, read a precomputed top-10 for that prefix from cache. Build those lists from aggregated query logs in a job that runs every few minutes. Filter with a blocklist before the list is published. Personal history is merged from a small per-user cache. The latency budget is tight, often under 50 ms, so this path is cache only. A miss returns an empty list or a shorter prefix’s list, and a job fills the missing prefix later.</p>
+
+<h2>21.9 Web crawler</h2>
+<p><strong>Job.</strong> Given some seed URLs, fetch pages, extract links, and repeat, without melting any host and without fetching the same URL forever.</p>
+<p><strong>Pieces.</strong> A URL frontier (a queue, ideally prioritized and partitioned by host). Fetchers. A parser that extracts links and content. A dedup store. A politeness rule: at most one fetch at a time to a host, with a delay. A Bloom filter in front of the dedup store answers “definitely new” quickly; “maybe seen” checks the store.</p>
+<p><strong>Hard parts.</strong> The frontier is the product. If you use one queue, a huge site crowds out the rest. Partition by host so politeness and fairness are natural. Respect a site’s crawl rules as a product and legal requirement. Store content in object storage and metadata in a table. Retries need a cap because some URLs never succeed.</p>
+
+<h2>21.10 Payments</h2>
+<p><strong>Job.</strong> Take a payment for an order exactly once, know the state afterward, and be able to reconcile with the outside provider.</p>
+<p><strong>Design.</strong> Your service is not the bank. It talks to a payment provider. The order service creates a payment row in state <code>pending</code> with an idempotency key. It calls the provider with that same key. The provider’s webhook, and a background poll, move the row to <code>succeeded</code> or <code>failed</code>. The webhook and the poll can both arrive; the state machine ignores a repeated success. Money movement is recorded as a <strong>ledger</strong>: append-only entries of debit and credit, not a single balance that you edit in place. The balance is the sum of entries, or a cached sum you can rebuild.</p>
+<p><strong>State machine.</strong> <code>pending → succeeded</code>, <code>pending → failed</code>, <code>succeeded → refund_pending → refunded</code>. There is no path from failed to succeeded without a new payment attempt and a new idempotency key.</p>
+<p><strong>Hard parts.</strong> The provider said yes and your process died before you stored it. The poll or the webhook heals this; both are required because webhooks get lost. Never trust the browser’s “payment worked” as the source of truth. Reconciliation compares your ledger to the provider’s report every day and alarms on mismatches.</p>
+
+<h2>21.11 Metrics and monitoring</h2>
+<p><strong>Job.</strong> Ingest numeric samples from many services and answer “what was the error rate over the last five minutes?”</p>
+<p><strong>Design.</strong> Each service emits samples: name, tags, timestamp, value. A collector aggregates locally (sum, count, histogram buckets) so you do not ship every request as its own row. Aggregates flow to a time-series store, partitioned by metric name and time bucket. Queries read pre-aggregated buckets, not raw events. Alert rules run on the same store on a schedule.</p>
+<p><strong>Hard parts.</strong> Cardinality. A tag whose value is a user id creates millions of series and melts the store. Tags are low-cardinality labels such as service, route, and status. Histograms beat averages, because an average hides a slow tail. Keep raw logs somewhere else; this system stores numbers.</p>
+
+<h2>21.12 News ticker / pub-sub</h2>
+<p><strong>Job.</strong> Publishers emit topics. Subscribers receive the topics they joined.</p>
+<p><strong>Design.</strong> A topic is a log partition set. Publishers append. Subscriber groups track offsets. For live UI subscribers, a gateway holds the socket and reads the log. Retention keeps history for replay. This is the queue chapter specialized to many independent readers. The new point is fanout to readers: a message stays in the log once, and each group has its own offset. You do not copy the payload per reader inside the log.</p>
+
+<h2>What these designs share</h2>
+<ul>
+<li>A source of truth, and derived copies (cache, search, feed, CDN) you can rebuild.</li>
+<li>A short path for the user and a queue for the slow part.</li>
+<li>An idempotency key wherever a retry could double-charge, double-post, or double-send.</li>
+<li>A shard key taken from the hot lookup.</li>
+<li>A stated freshness rule: strong for money and unique names, lagged for counts, presence, and search.</li>
+</ul>
+
+<h1>22. The LLD method and object rules</h1>
+<p>Low-level design starts after the city map exists, or beside it when the problem is mostly rules inside one program. The reader of your LLD should be able to write the code.</p>
+
+<h2>Steps</h2>
+<ol>
+<li>Use cases, written as actor plus action.</li>
+<li>Nouns become classes. Messages become small data objects.</li>
+<li>Relationships: who calls whom, and who holds a list of whom.</li>
+<li>Methods on the service that match the use cases. Walk the hottest use case line by line.</li>
+<li>Interfaces at the edges: database, cache, clock, random, payment provider. Your rules stay testable without those neighbors.</li>
+<li>The table, the unique keys, and the update that is safe under two writers.</li>
+<li>Edges: empty input, duplicates, expiry, crashes, and two actions at once.</li>
+</ol>
+
+<h2>Objects</h2>
+<p>A <strong>class</strong> is a blueprint. An <strong>object</strong> is one built instance. A <strong>field</strong> is data the object holds. A <strong>method</strong> is an action it can do.</p>
+<p><strong>Encapsulation.</strong> Fields stay private. Callers use methods. The class can change how it stores data without changing every caller.</p>
+<p><strong>Abstraction.</strong> Callers see a small promise, such as <code>findByCode</code>, and do not see SQL.</p>
+<p><strong>Inheritance.</strong> A class is a special kind of another class and reuses its code. Use it when the sentence “is a kind of” will stay true forever. A <code>Bus</code> is a kind of <code>Vehicle</code>.</p>
+<p><strong>Polymorphism.</strong> A caller holds the general type and gets the specific behavior. A list of <code>Vehicle</code> calls <code>spotsNeeded()</code>, and a bus returns 5 while a motorcycle returns 1.</p>
+<p><strong>Composition.</strong> A class holds other objects and asks them to help. <code>LinkService</code> holds a <code>Codec</code>. Prefer composition as the default way to reuse behavior. Inheritance is for a true “is a kind of” relationship.</p>
+<p>An <strong>interface</strong> is a plug shape with no stored data: a list of methods. An <strong>abstract class</strong> is a partial blueprint: some methods implemented, some left open, and it may hold fields. Use an interface when many unrelated classes should fit the same plug. Use an abstract class when the shared code is real and the children are the same family.</p>
+
+<h2>SOLID</h2>
+<ul>
+<li><strong>Single responsibility.</strong> One reason to change. A codec that also opens SQL connections changes when the encoding changes and when the database changes. Split them.</li>
+<li><strong>Open for extension, closed for modification.</strong> A new fee rule is a new class, not an edit inside <code>leave()</code>.</li>
+<li><strong>Liskov substitution.</strong> Anything passed in as the interface must keep the promise. If <code>findByCode</code> says “return null when missing,” every implementation does that. A surprise exception breaks callers.</li>
+<li><strong>Interface segregation.</strong> Small plugs. A class that only inserts links does not implement a 30-method administration interface.</li>
+<li><strong>Dependency inversion.</strong> The service depends on the plug, not on the SQL class. The SQL class is passed in at construction. Tests pass a fake.</li>
+</ul>
+
+<h2>A readable shape for request code</h2>
+<pre>Controller  - HTTP, status codes, auth checks at the door
+Service     - rules and decisions
+Repository  - load and save
+Entity      - the fact, with small helpers that never touch the network
+Clock, IdSource, Cache, Queue - plugs</pre>
+<p>Validation of shape (missing field, too long) can live at the controller. Validation of meaning (this seat is taken, this code is expired) lives in the service, because it is a rule even when the caller is not HTTP.</p>
+
+<h2>UML you actually draw</h2>
+<p><strong>Class diagram.</strong> A box per class. A line with a diamond means “owns a collection of.” An arrow means “calls” or “holds.” A dashed arrow to an interface means “fits this plug.” You do not need every field on the diagram. Put the fields that explain the design.</p>
+<p><strong>Sequence diagram.</strong> Lifelines across the top, time downward, arrows for calls. Draw one for the hot use case and one for the failure you are proud of handling.</p>
+<p><strong>State diagram.</strong> Bubbles for states, arrows for events. Draw one whenever a thing has a lifecycle: payment, seat hold, elevator, vending machine. If you cannot name the states, you do not understand the rules yet.</p>
+
+<h1>23. Patterns</h1>
+<p>A pattern is a named shape. Use it when the problem matches. Naming it is how you talk to other programmers. The shape matters more than the name.</p>
+<table>
+<tr><th>Pattern</th><th>Shape</th><th>Use when</th></tr>
+<tr><td>Strategy</td><td>Several classes share a method. The caller holds one and can be given another</td><td>Fee rules, id generators, ranking, eviction policies</td></tr>
+<tr><td>State</td><td>An object’s behavior changes by swapping a state object. Each state decides the next</td><td>Elevator, vending machine, payment, TCP-like flows</td></tr>
+<tr><td>Observer</td><td>A subject keeps listeners and tells them when something happens</td><td>In-process events: “seat booked, tell the display.” Across processes, use a queue instead</td></tr>
+<tr><td>Factory</td><td>One method builds the right class so callers do not construct variants themselves</td><td>Build a Vehicle from the string “bus”</td></tr>
+<tr><td>Builder</td><td>Step-by-step construction of an object with many optional fields, ending in <code>build()</code> which checks the required ones</td><td>A search query, a notification with many channels</td></tr>
+<tr><td>Adapter</td><td>A wrapper that makes a foreign class fit your plug</td><td>Two payment providers behind one <code>Charger</code> interface</td></tr>
+<tr><td>Facade</td><td>One simple method in front of a cluster of classes</td><td><code>Checkout.place(order)</code> hides inventory, payment, and mail</td></tr>
+<tr><td>Decorator</td><td>A wrapper with the same interface that adds behavior and then calls the inner object</td><td>Logging, timing, or compression around a repository</td></tr>
+<tr><td>Proxy</td><td>A stand-in that controls access to the real object</td><td>A lazy loader, a permission check, a local stub for a remote service</td></tr>
+<tr><td>Composite</td><td>Leaves and branches share an interface. A branch holds children</td><td>File system folders, UI trees, organization charts</td></tr>
+<tr><td>Command</td><td>An action is an object with <code>execute()</code> and maybe <code>undo()</code></td><td>Keybindings, job queues in memory, editor operations</td></tr>
+<tr><td>Chain of responsibility</td><td>Handlers in a line. Each handles the request or passes it on</td><td>HTTP middleware: auth, then rate limit, then the handler</td></tr>
+<tr><td>Template method</td><td>A base class fixes the steps and calls overridable hooks</td><td>A game loop, an import pipeline with a custom parse step</td></tr>
+<tr><td>Iterator</td><td>A way to walk a collection without showing its insides</td><td>Paging through seats or files</td></tr>
+<tr><td>Repository</td><td>A collection-like plug for loading and saving entities</td><td>Any LLD that touches a database</td></tr>
+<tr><td>Dependency injection</td><td>Pass helpers into the constructor</td><td>Always, for anything you want to fake in a test</td></tr>
+<tr><td>Singleton</td><td>One instance in the process</td><td>Rarely. A stateless codec can be one shared object. A hidden global database connection makes tests lie. Prefer passing the object in</td></tr>
+</table>
+
+<h1>24. Concurrency inside one process</h1>
+<p>Two threads of the same program can run your method at the same time. The bugs are real even when you have one server.</p>
+<p>A <strong>race</strong> is two threads reading a value, both adding one, and both writing back. One update disappears. A view counter implemented as read-modify-write in application memory has this bug. Fixes: an atomic increment, a database expression <code>set count = count + 1</code>, or a lock around the whole read-modify-write.</p>
+<p>A <strong>lock</strong> (mutex) lets one thread into a block at a time. Keep the block short. Do not call the network while holding a lock that other requests need.</p>
+<p>A <strong>deadlock</strong> is two threads each holding a lock the other wants. Prevent it by acquiring locks in a global order: always lock the smaller id first. If you already hold locks and need a third, you probably want a redesign.</p>
+<p>A <strong>thread pool</strong> is a fixed set of workers pulling tasks. Unbounded thread creation under load exhausts memory. Queue in front of the pool, and when the queue is full, reject.</p>
+<p><strong>Immutable objects</strong> never change after construction. They need no lock to be shared for reading. A new version is a new object.</p>
+<p>In an LLD interview or a design doc, say which data is touched by two threads and which of these tools you use. “The seat map is guarded by one lock per show, and the lock is held only around the in-memory check and the database conditional update” is a complete answer. A conditional update, <code>update seats set owner = ? where id = ? and owner is null</code>, lets the database be the lock. Check the affected-row count. Zero means someone else took it.</p>
+
+<h1>25. Memory structures</h1>
+<p>Pick the structure from the operation that must be fast.</p>
+<table>
+<tr><th>Structure</th><th>Fast operation</th><th>Designs that need it</th></tr>
+<tr><td>Dynamic array</td><td>Index by position, append</td><td>A board, a list of segments</td></tr>
+<tr><td>Linked list</td><td>Insert and delete when you already hold the node</td><td>The order part of an LRU cache</td></tr>
+<tr><td>Hash map</td><td>Get, put, delete by key, average constant time</td><td>Lookups by id, the index part of an LRU cache, a connection registry</td></tr>
+<tr><td>Hash set</td><td>Membership</td><td>“Is this ticket already seen?”</td></tr>
+<tr><td>Heap / priority queue</td><td>Take the smallest or largest</td><td>Elevator requests by floor distance, top-K, scheduled jobs by time</td></tr>
+<tr><td>Balanced tree / ordered map</td><td>Range and nearest key, sorted order</td><td>“Next free seat number,” calendars</td></tr>
+<tr><td>Trie</td><td>Prefix lookup</td><td>Autocomplete, dictionaries</td></tr>
+<tr><td>Graph</td><td>Neighbors, paths</td><td>Follows, maps, dependency trees</td></tr>
+<tr><td>Deque</td><td>Push and pop at both ends</td><td>Sliding windows, BFS</td></tr>
+</table>
+<p>State the cost you care about. “Get and put are both O(1)” is the whole reason an LRU cache is a hash map plus a doubly linked list, and not a list you scan.</p>
+
+<h2>LRU cache, because it is both a structure and a design</h2>
+<p>Goal: <code>get</code> and <code>put</code> in constant time, and when capacity is exceeded, drop the least recently used key.</p>
+<p>A hash map gives the node for a key. A doubly linked list gives order: the head is most recently used, the tail is least. <code>get</code> moves the node to the head. <code>put</code> of a new key adds at the head and, if over capacity, deletes the tail from the list and the map. <code>put</code> of an existing key updates the value and moves the node to the head. The map and the list always contain the same keys. One lock around both updates keeps them agreeing, or the structure is used by a single thread inside a shard.</p>
+
+<h1>26. Testing a design</h1>
+<p>A design you cannot test is unfinished. Write tests against the service, with fakes for the plugs.</p>
+<ul>
+<li><strong>Repository fake</strong> is a hash map. It enforces the same unique keys the database would, so a test can prove the 409 path.</li>
+<li><strong>Clock fake</strong> returns a time you set, so expiry tests do not sleep.</li>
+<li><strong>Queue fake</strong> records published notes.</li>
+<li><strong>Cache fake</strong> is a map that can be cleared to simulate a flush.</li>
+</ul>
+<p>Cases worth writing before you trust the service:</p>
+<ul>
+<li>The happy path of each use case.</li>
+<li>Invalid input.</li>
+<li>Not found, and found-but-expired.</li>
+<li>The same request token twice.</li>
+<li>Two creates with the same custom code.</li>
+<li>A cache hit, a cache miss, and a cache that throws. The service should still read the database when the cache throws, if that was your HLD choice.</li>
+<li>A conditional update that affects zero rows.</li>
+</ul>
+<p>Concurrency tests start two threads on the last seat or the last token and assert that exactly one wins. Flaky tests that sleep and hope are weak. A deterministic interleaving, or a database constraint you can observe, is strong.</p>

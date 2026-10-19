@@ -1,0 +1,854 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Python from Zero</title><style>
+  @page { size: A4; margin: 16mm 14mm 18mm 14mm; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: Georgia, "Times New Roman", serif; font-size: 11pt; line-height: 1.45; color: #1c1c1c; }
+  h1 { font-family: "Segoe UI", Calibri, sans-serif; font-size: 20pt; line-height: 1.25; margin: 18px 0 10px; page-break-before: always; }
+  h1.cover { page-break-before: avoid; font-size: 28pt; margin-top: 12px; }
+  h2 { font-family: "Segoe UI", Calibri, sans-serif; font-size: 14pt; margin: 16px 0 6px; page-break-after: avoid; }
+  p { margin: 0 0 8px; }
+  ul, ol { margin: 0 0 10px; padding-left: 20px; }
+  li { margin-bottom: 3px; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0 12px; font-size: 10pt; page-break-inside: avoid; }
+  th, td { border: 1px solid #c8c8c8; padding: 4px 6px; vertical-align: top; text-align: left; }
+  th { background: #f2f2f2; font-family: "Segoe UI", Calibri, sans-serif; }
+  pre { font-family: Consolas, "Courier New", monospace; font-size: 8.5pt; line-height: 1.35; background: #f6f6f6; padding: 8px 10px; white-space: pre-wrap; page-break-inside: avoid; }
+  code { font-family: Consolas, "Courier New", monospace; font-size: 9.5pt; }
+  .subtitle { font-size: 13pt; margin-top: 0; }
+  .toc { columns: 2; column-gap: 24px; }
+  .end { margin-top: 16px; }
+</style></head><body>
+<h1 class="cover">Python from Zero</h1>
+<p class="subtitle">The concepts you should know. An offline guide.</p>
+<p>This book is the concept map of Python. It assumes you can read a sentence and you have not memorized the language. Every idea is defined when it appears. The examples are Python 3.10 or newer. On this machine the installed interpreter is Python 3.14, which runs all of them.</p>
+<p>Run a file with <code>python file.py</code>. Try a line in the prompt with <code>python</code>, then type <code>exit()</code> to leave. A concept is yours when you can predict the output before you run it.</p>
+
+<h2>Contents</h2>
+<ol class="toc">
+<li>Programs, indentation, and comments</li>
+<li>Objects, names, and mutability</li>
+<li>None, Booleans, and numbers</li>
+<li>Text and bytes</li>
+<li>Operators and truth</li>
+<li>Choices and loops</li>
+<li>Functions and scope</li>
+<li>Lists, tuples, dicts, and sets</li>
+<li>Comprehensions and unpacking</li>
+<li>Files and paths</li>
+<li>Errors</li>
+<li>Classes</li>
+<li>The data model</li>
+<li>Iterators, generators, and with</li>
+<li>Decorators</li>
+<li>Modules, packages, and installs</li>
+<li>Type hints</li>
+<li>The standard library you actually use</li>
+<li>Concurrency</li>
+<li>Tests, debugging, and style</li>
+<li>Pitfalls</li>
+<li>Glossary and a study plan</li>
+<li>Interview questions</li>
+</ol>
+
+<h1>1. Programs, indentation, and comments</h1>
+<p>A Python program is a text file of statements. The interpreter reads the file from top to bottom and runs each statement. Indentation is syntax. A block is the lines indented further than the line that opened them. Use four spaces. Do not mix tabs and spaces.</p>
+<pre>def greet(name):
+    if name:
+        print("Hello", name)
+    else:
+        print("Hello")</pre>
+<p>A comment starts with <code>#</code> and runs to the end of the line. The interpreter skips it. A docstring is a string sitting as the first statement of a module, function, or class. Tools and <code>help()</code> read it. Use a docstring to say what the function promises, not to narrate each line.</p>
+<pre>def area(width, height):
+    """Return the area of a rectangle. width and height are numbers."""
+    return width * height</pre>
+<p><code>print</code> writes a line of text. It is how you look at a value while learning. In a real program, lasting messages go through the <code>logging</code> module, covered later.</p>
+
+<h1>2. Objects, names, and mutability</h1>
+<p>Everything in Python is an <strong>object</strong>: a thing with a type, an identity, and a value. The number <code>3</code>, the text <code>"hi"</code>, a list, and a function are all objects.</p>
+<p>A <strong>name</strong> is a label stuck on an object. Assignment sticks the label on.</p>
+<pre>count = 1
+count = count + 1</pre>
+<p>The second line builds a new integer and moves the label <code>count</code> onto it. It does not change the object <code>1</code>. Integers cannot change. They are <strong>immutable</strong>.</p>
+<p>A list can change. It is <strong>mutable</strong>.</p>
+<pre>nums = [1, 2]
+also = nums
+also.append(3)
+# nums and also are the same list: [1, 2, 3]</pre>
+<p><code>also = nums</code> does not copy the list. Both names point at one object. <code>append</code> changes that object, so both names see the change. This is the fact behind most “why did my other variable change?” bugs.</p>
+<p><code>==</code> asks whether two values compare equal. <code>is</code> asks whether two names point at the exact same object. Use <code>is</code> for <code>None</code> and for this identity question. Use <code>==</code> for values.</p>
+<pre>a = [1, 2]
+b = [1, 2]
+a == b      # True, same contents
+a is b      # False, two lists</pre>
+<p>A <strong>shallow copy</strong> makes a new outer container and keeps the same inner objects. A <strong>deep copy</strong> copies the inners too. <code>list(old)</code>, <code>old[:]</code>, and <code>copy.copy</code> are shallow. <code>copy.deepcopy</code> walks the whole structure.</p>
+<pre>import copy
+grid = [[1], [2]]
+shallow = copy.copy(grid)
+shallow[0].append(9)
+# grid is now [[1, 9], [2]] because the inner list was shared
+deep = copy.deepcopy(grid)
+deep[0].append(8)
+# grid is unchanged by this append</pre>
+
+<h1>3. None, Booleans, and numbers</h1>
+<p><code>None</code> is the single object that means “no value.” There is only one of it. Test with <code>result is None</code>.</p>
+<p>Booleans are <code>True</code> and <code>False</code>. They are the two values of type <code>bool</code>.</p>
+<p>Integers (<code>int</code>) have no fixed size. <code>2 ** 1000</code> is a real integer, not an overflow. Floats (<code>float</code>) are binary fractions with a limited number of bits. <code>0.1 + 0.2</code> is not exactly <code>0.3</code>. For money and other exact decimals, use <code>decimal.Decimal</code>, not <code>float</code>.</p>
+<pre>from decimal import Decimal
+price = Decimal("19.99")
+tax = Decimal("0.08")
+total = price * (1 + tax)</pre>
+<p>Write the decimal as a string. <code>Decimal(0.1)</code> starts from the already-inexact float.</p>
+<p>Division with <code>/</code> always returns a float. <code>//</code> is floor division, toward negative infinity. <code>%</code> is the remainder. <code>divmod(a, b)</code> returns both. <code>**</code> is power.</p>
+<p><code>round</code> uses banker’s rounding on ties: <code>round(2.5)</code> is <code>2</code> and <code>round(3.5)</code> is <code>4</code>, rounding to the even integer. Do not use it as a money policy. Quantize a <code>Decimal</code> instead.</p>
+
+<h1>4. Text and bytes</h1>
+<p>A <code>str</code> is Unicode text. A <code>bytes</code> object is raw octets. Text becomes bytes through an encoding, usually UTF-8.</p>
+<pre>text = "café"
+raw = text.encode("utf-8")   # bytes
+back = raw.decode("utf-8")    # str</pre>
+<p>Strings are immutable. Methods such as <code>upper</code> and <code>replace</code> return a new string. Useful tests: <code>startswith</code>, <code>endswith</code>, <code>isdigit</code>, <code>strip</code>. <code>split</code> breaks a string into a list. <code>join</code> builds a string from pieces and is the right way to combine many fragments.</p>
+<pre>words = ["system", "design"]
+line = " ".join(words)        # "system design"</pre>
+<p>Indexing starts at 0. A negative index counts from the end. <code>s[-1]</code> is the last character. A slice <code>s[start:stop]</code> includes <code>start</code> and excludes <code>stop</code>. <code>s[::2]</code> takes every second character. Slicing a string returns a new string.</p>
+<p>Formatting: an f-string evaluates expressions inside braces.</p>
+<pre>name = "Priya"
+score = 9
+label = f"{name} scored {score}"</pre>
+<p>Put a format spec after a colon: <code>f"{price:.2f}"</code>. For a value that might contain braces or comes from a template file, <code>template.format(name=name)</code> is the other tool. Do not build SQL or HTML by gluing raw user text into a string.</p>
+<p>A raw string, <code>r"\n"</code>, treats backslashes as ordinary characters. Regular expressions want raw strings so <code>\d</code> stays <code>\d</code>.</p>
+
+<h1>5. Operators and truth</h1>
+<p>Comparisons chain: <code>0 &lt;= n &lt; 10</code> means <code>0 &lt;= n and n &lt; 10</code>, and <code>n</code> is evaluated once.</p>
+<p><code>and</code>, <code>or</code>, and <code>not</code> combine conditions. <code>and</code> and <code>or</code> return one of their operands, not always a Boolean.</p>
+<pre>name = "" or "guest"     # "guest"
+found = items and items[0]</pre>
+<p>Many values count as false in an <code>if</code>: <code>None</code>, <code>False</code>, <code>0</code>, <code>0.0</code>, empty text, empty bytes, and empty containers. Everything else counts as true. If you mean “is this missing,” write <code>value is None</code>. An empty list is false and is not <code>None</code>.</p>
+<p>Membership is <code>in</code>. For a dict, <code>in</code> tests keys. For a string, it tests a substring. For a set or dict, the test is fast. For a list, the test walks the list.</p>
+<p>The walrus operator <code>:=</code> assigns inside an expression.</p>
+<pre>if (line := input()) != "quit":
+    print(line)</pre>
+<p>Use it when a name would otherwise be assigned on the line above only so the next line can test it.</p>
+
+<h1>6. Choices and loops</h1>
+<pre>if score &gt;= 90:
+    grade = "A"
+elif score &gt;= 80:
+    grade = "B"
+else:
+    grade = "C"</pre>
+<p><code>if</code> runs its block when the condition is true. <code>elif</code> is another condition, tried only if the earlier ones were false. <code>else</code> runs when none matched. One of these blocks runs.</p>
+<p><code>match</code> compares a value against patterns. It fits when one value has several shapes.</p>
+<pre>def describe(value):
+    match value:
+        case 0:
+            return "zero"
+        case [x, y]:
+            return f"pair {x}, {y}"
+        case {"code": code}:
+            return f"code {code}"
+        case _:
+            return "other"</pre>
+<p>A <code>for</code> loop asks an iterable for items, one at a time.</p>
+<pre>for item in ["a", "b"]:
+    print(item)</pre>
+<p><code>range(stop)</code> yields integers from 0 up to but not including <code>stop</code>. <code>range(start, stop, step)</code> is the full form. <code>range</code> does not build a giant list.</p>
+<p><code>while</code> repeats as long as a condition stays true. If the condition never becomes false, the loop never ends. That is an infinite loop. Put a change inside the body that moves toward the end.</p>
+<p><code>break</code> leaves the loop now. <code>continue</code> skips the rest of this round and starts the next. A loop may have an <code>else</code>. That <code>else</code> runs when the loop finished without <code>break</code>. It is useful for search: “we walked the whole list and did not find it.”</p>
+<pre>for user in users:
+    if user.name == "Priya":
+        break
+else:
+    user = None</pre>
+
+<h1>7. Functions and scope</h1>
+<p>A function packages steps under a name. <code>return</code> sends a value back and ends the function. A function with no <code>return</code> returns <code>None</code>.</p>
+<pre>def clamp(n, low, high):
+    if n &lt; low:
+        return low
+    if n &gt; high:
+        return high
+    return n</pre>
+<p>Parameters can have defaults. The default is computed once, when the function is defined, not on each call. A mutable default is shared by every caller that omits the argument. That is a classic bug.</p>
+<pre>def add_item(item, bucket=None):
+    if bucket is None:
+        bucket = []
+    bucket.append(item)
+    return bucket</pre>
+<p>Arguments can be passed by position or by name. A <code>/</code> in the parameter list means “everything before me is positional only.” A <code>*</code> means “everything after me is keyword only.”</p>
+<pre>def build(name, /, size, *, bold=False):
+    return name, size, bold
+
+build("title", 12, bold=True)</pre>
+<p><code>*args</code> collects extra positional arguments into a tuple. <code>**kwargs</code> collects extra keyword arguments into a dict.</p>
+<pre>def show(*args, **kwargs):
+    return args, kwargs
+
+show(1, 2, color="blue")   # ((1, 2), {"color": "blue"})</pre>
+<p>A <code>lambda</code> is a function written as one expression. Use it as a tiny key or callback. If the body needs statements, write a <code>def</code>.</p>
+<pre>names = ["priya", "Anu", "ben"]
+ordered = sorted(names, key=lambda s: s.lower())</pre>
+
+<h2>Scope</h2>
+<p>A name is looked up in the LEGB order: <strong>L</strong>ocal to the function, then <strong>E</strong>nclosing functions, then the module <strong>G</strong>lobal, then <strong>B</strong>uiltins such as <code>len</code> and <code>print</code>.</p>
+<p>Assignment inside a function makes that name local to the whole function. To assign to a module name, declare <code>global</code>. To assign to a name in an enclosing function, declare <code>nonlocal</code>. Reading a global needs no declaration.</p>
+<p>A closure is a function that remembers variables from the function that built it.</p>
+<pre>def make_adder(n):
+    def add(x):
+        return x + n
+    return add
+
+add5 = make_adder(5)
+add5(2)     # 7</pre>
+<p>The loop-closure trap: every lambda in this list sees the same <code>i</code>, which is <code>2</code> after the loop.</p>
+<pre>funcs = []
+for i in range(3):
+    funcs.append(lambda: i)
+# each funcs[k]() returns 2
+
+funcs = []
+for i in range(3):
+    funcs.append(lambda i=i: i)
+# default binds the current i: 0, 1, 2</pre>
+
+<h1>8. Lists, tuples, dicts, and sets</h1>
+<p>A <strong>list</strong> is an ordered, mutable sequence. Indexing is fast. Appending at the end is fast on average. Inserting at the front is slow, because every later item moves. Searching with <code>in</code> walks the list.</p>
+<pre>nums = [3, 1, 2]
+nums.append(4)
+nums.sort()
+last = nums.pop()</pre>
+<p><code>sort</code> changes the list. <code>sorted(nums)</code> returns a new list and leaves the original. Both take <code>key</code> and <code>reverse</code>.</p>
+<p>A <strong>tuple</strong> is an ordered, immutable sequence. Use it for a fixed record, such as a point <code>(x, y)</code>, and as a dict key when every item inside is hashable. Immutable means you cannot rebind a slot. If a slot holds a list, that list can still change.</p>
+<p>A <strong>dict</strong> maps keys to values. Keys must be hashable: immutable values such as strings, numbers, and tuples of hashables. Lists cannot be keys. Lookup, insert, and delete are fast on average. Since Python 3.7, dicts keep insertion order.</p>
+<pre>user = {"name": "Priya", "score": 9}
+user["city"] = "Pune"
+score = user.get("score", 0)
+name = user.pop("name")</pre>
+<p><code>user["missing"]</code> raises <code>KeyError</code>. <code>user.get("missing")</code> returns <code>None</code> or a default you pass. Iterate keys with <code>for key in user</code>, pairs with <code>user.items()</code>.</p>
+<p>A <strong>set</strong> holds unique hashable items and does not keep a useful order for your logic. It gives fast membership and the operations <code>|</code> union, <code>&amp;</code> intersection, and <code>-</code> difference.</p>
+<pre>seen = set()
+seen.add("a")
+"a" in seen</pre>
+<p>A <code>frozenset</code> is an immutable set and can be a dict key.</p>
+
+<h2>What to pick</h2>
+<table>
+<tr><th>You need</th><th>Use</th></tr>
+<tr><td>An ordered row you will edit</td><td>list</td></tr>
+<tr><td>A fixed group of fields</td><td>tuple, or a dataclass once you have classes</td></tr>
+<tr><td>Lookup by a key</td><td>dict</td></tr>
+<tr><td>Unique items and fast membership</td><td>set</td></tr>
+<tr><td>A line at both ends</td><td><code>collections.deque</code></td></tr>
+<tr><td>A count of each item</td><td><code>collections.Counter</code></td></tr>
+<tr><td>A dict that fills a missing key</td><td><code>collections.defaultdict</code></td></tr>
+</table>
+
+<h1>9. Comprehensions and unpacking</h1>
+<p>A comprehension builds a list, set, or dict from a loop written as an expression. It is the ordinary way to transform a sequence.</p>
+<pre>squares = [n * n for n in range(5)]
+evens = [n for n in range(10) if n % 2 == 0]
+index = {name: i for i, name in enumerate(names)}
+unique_sizes = {len(word) for word in words}</pre>
+<p><code>enumerate</code> pairs each item with its index. <code>zip</code> walks several sequences together and stops at the shortest.</p>
+<pre>for i, name in enumerate(["a", "b"]):
+    print(i, name)
+pairs = list(zip([1, 2], ["a", "b"]))</pre>
+<p>Unpacking assigns several names at once.</p>
+<pre>x, y = (1, 2)
+first, *rest = [1, 2, 3, 4]
+a, b = b, a</pre>
+<p>The last line swaps without a temporary variable. <code>*rest</code> collects whatever remains into a list. You can unpack into a call: <code>print(*nums)</code> passes each item as its own argument, and <code>f(**options)</code> passes a dict as keyword arguments.</p>
+
+<h1>10. Files and paths</h1>
+<p>Use <code>pathlib.Path</code> for file names. It joins pieces with <code>/</code> in code, on every operating system.</p>
+<pre>from pathlib import Path
+folder = Path("notes")
+folder.mkdir(exist_ok=True)
+path = folder / "today.txt"
+path.write_text("hello\n", encoding="utf-8")
+text = path.read_text(encoding="utf-8")</pre>
+<p><code>open</code> is the lower-level tool. Always pass <code>encoding</code> for text. A <code>with</code> block closes the file even if an error happens.</p>
+<pre>with open(path, encoding="utf-8") as handle:
+    for line in handle:
+        print(line.rstrip("\n"))</pre>
+<p>Modes: <code>"r"</code> read text, <code>"w"</code> write text and truncate, <code>"a"</code> append, <code>"rb"</code> and <code>"wb"</code> for bytes. <code>"w"</code> destroys existing contents when the file opens. Read bytes when the file is an image, a zip, or anything that is not text.</p>
+<p>JSON is the usual text format for structured data.</p>
+<pre>import json
+payload = json.dumps({"ok": True})
+data = json.loads(payload)
+path.write_text(json.dumps(data), encoding="utf-8")</pre>
+<p><code>json</code> understands dicts, lists, strings, numbers, Booleans, and <code>None</code>. It does not understand a custom class unless you convert that class to those types first.</p>
+
+<h1>11. Errors</h1>
+<p>An exception is how Python reports that a statement could not finish. The traceback shows the call stack, newest call last. Read it from the bottom: the exception type, the message, and the line that raised it. Then walk upward to see who called that line.</p>
+<pre>try:
+    value = int(text)
+except ValueError:
+    value = None
+else:
+    print("parsed", value)
+finally:
+    print("done")</pre>
+<p><code>except</code> runs when that exception type is raised. <code>else</code> runs when the <code>try</code> body did not raise. <code>finally</code> runs either way, including after <code>return</code>. Use <code>finally</code> or, better, <code>with</code>, to release a resource.</p>
+<p>Catch the narrowest type that you can handle. A bare <code>except:</code> also catches <code>KeyboardInterrupt</code> and <code>SystemExit</code>, which inherit from <code>BaseException</code> rather than <code>Exception</code>. Catch <code>Exception</code> only at a boundary where you log and continue or exit cleanly.</p>
+<p>Raise with <code>raise ValueError("amount must be positive")</code>. Chain causes with <code>raise RuntimeError("could not save") from error</code> so the original traceback stays attached. <code>raise</code> with nothing, inside an <code>except</code>, re-raises the current exception.</p>
+<p>Define your own type when callers should be able to catch that case on purpose.</p>
+<pre>class Full(Exception):
+    pass
+
+def park():
+    raise Full("no spots")</pre>
+<p>Python style prefers EAFP, “easier to ask forgiveness than permission”: try the operation and handle the exception. The other style, LBYL, checks first (“look before you leap”). A check-then-act pair can still fail if the world changes between the check and the act. Catching <code>KeyError</code> or <code>FileNotFoundError</code> is often the honest version.</p>
+
+<h1>12. Classes</h1>
+<p>A class is a blueprint. An instance is one built object. <code>self</code> is the instance the method was called on. You list it as the first parameter. You do not pass it at the call: <code>ticket.leave()</code> passes <code>ticket</code> as <code>self</code>.</p>
+<pre>class Ticket:
+    def __init__(self, plate, entry):
+        self.plate = plate
+        self.entry = entry
+        self.exit = None
+
+    def close(self, now):
+        self.exit = now
+        return now - self.entry
+
+ticket = Ticket("KA01", 10)
+ticket.close(25)</pre>
+<p><code>__init__</code> initializes a new instance. It does not return the instance. Python creates the instance, then calls <code>__init__</code>.</p>
+<p>Attributes set on <code>self</code> belong to that instance. Attributes set on the class are shared.</p>
+<pre>class Lot:
+    city = "Pune"          # shared
+    def __init__(self):
+        self.spots = []    # per instance</pre>
+<p>A mutable class attribute, such as a list defined on the class, is one list for every instance that does not override it. Put per-instance containers on <code>self</code> inside <code>__init__</code>.</p>
+
+<h2>Methods</h2>
+<p>An ordinary method receives the instance. A <code>@classmethod</code> receives the class, and is how you write an alternate constructor. A <code>@staticmethod</code> receives neither. It is a function parked in the class because it belongs to that topic. Prefer a module-level function when it does not need the class at all.</p>
+<pre>class Link:
+    def __init__(self, code, url):
+        self.code = code
+        self.url = url
+
+    @classmethod
+    def from_pair(cls, pair):
+        code, url = pair
+        return cls(code, url)</pre>
+<p>A <code>@property</code> looks like an attribute and runs a method. Use it when reading a value should stay cheap and stable, and when replacing a stored attribute with a calculation should not break callers.</p>
+<pre>class Circle:
+    def __init__(self, radius):
+        self.radius = radius
+
+    @property
+    def area(self):
+        return 3.14159 * self.radius ** 2</pre>
+
+<h2>Inheritance</h2>
+<p>A subclass is a more specific blueprint. It reuses the superclass and can override methods. <code>super()</code> calls the next implementation in the method resolution order.</p>
+<pre>class Vehicle:
+    def spots(self):
+        return 1
+
+class Bus(Vehicle):
+    def spots(self):
+        return 5</pre>
+<p><code>isinstance(bus, Vehicle)</code> is true. <code>type(bus) is Vehicle</code> is false. Prefer <code>isinstance</code> when you mean “can this be treated as.”</p>
+<p>The <strong>MRO</strong> is the order Python searches parent classes. With single inheritance it is the obvious chain. With multiple inheritance, Python uses the C3 order so each parent appears before its own parents and so a class is not visited twice. You rarely need multiple inheritance. When you do, read <code>Class.__mro__</code> before you trust <code>super()</code>.</p>
+<p>A leading underscore, <code>_cache</code>, is a convention: “internal, callers should use the public method.” Two leading underscores, <code>__cache</code>, trigger name mangling to <code>_ClassName__cache</code>, which avoids accidental overrides in subclasses. It is not a security boundary. Nothing in a Python object is hidden from a determined caller.</p>
+
+<h2>Dataclasses and enums</h2>
+<p>A dataclass writes <code>__init__</code>, <code>__repr__</code>, and <code>__eq__</code> for a class that mostly stores fields.</p>
+<pre>from dataclasses import dataclass
+
+@dataclass
+class Point:
+    x: float
+    y: float
+
+    def moved(self, dx, dy):
+        return Point(self.x + dx, self.y + dy)</pre>
+<p><code>frozen=True</code> makes assignment to fields fail, which is what you want for a value that should be a dict key. <code>slots=True</code> on a dataclass stores fields more tightly and rejects accidental new attributes.</p>
+<p>An enum is a fixed set of named constants.</p>
+<pre>from enum import Enum
+
+class State(Enum):
+    HELD = "held"
+    SOLD = "sold"</pre>
+<p>Compare with <code>is</code> or <code>==</code> against the member, not against the raw string scattered through the program.</p>
+
+<h1>13. The data model</h1>
+<p>Python’s syntax is sugar over methods with double underscores. When you write <code>len(box)</code>, Python calls <code>box.__len__()</code>. When you write <code>a + b</code>, it calls <code>a.__add__(b)</code>. When you write <code>box[0]</code>, it calls <code>box.__getitem__(0)</code>. Implementing these methods is how your class joins the language.</p>
+<table>
+<tr><th>You write</th><th>Python calls</th></tr>
+<tr><td><code>len(obj)</code></td><td><code>__len__</code></td></tr>
+<tr><td><code>obj[key]</code></td><td><code>__getitem__</code></td></tr>
+<tr><td><code>for x in obj</code></td><td><code>__iter__</code></td></tr>
+<tr><td><code>str(obj)</code> and print</td><td><code>__str__</code></td></tr>
+<tr><td>the prompt and containers</td><td><code>__repr__</code></td></tr>
+<tr><td><code>obj == other</code></td><td><code>__eq__</code></td></tr>
+<tr><td><code>hash(obj)</code> and dict keys</td><td><code>__hash__</code></td></tr>
+<tr><td><code>with obj</code></td><td><code>__enter__</code> and <code>__exit__</code></td></tr>
+<tr><td><code>obj()</code></td><td><code>__call__</code></td></tr>
+</table>
+<p><code>__repr__</code> should be unambiguous, ideally a string that shows how to rebuild the value. <code>__str__</code> can be friendly. If you define only <code>__repr__</code>, <code>print</code> uses it too.</p>
+<p>If you define <code>__eq__</code>, Python sets <code>__hash__</code> to <code>None</code> unless you define that too, and the objects cannot be set members or dict keys. Equal objects must have equal hashes. The hash of a mutable object is a trap, because changing the object after inserting it into a set loses the entry. Hash immutable values.</p>
+<p>Duck typing means “if it has the methods you need, use it.” A function that calls <code>write</code> can accept a file, a <code>StringIO</code>, or your own class with <code>write</code>. A <code>Protocol</code> in the typing chapter names that shape for the type checker. An abstract base class, from <code>abc</code>, refuses to instantiate a subclass that forgot a required method. Use a Protocol when you want structure. Use an ABC when you want a shared base that enforces a contract.</p>
+
+<h1>14. Iterators, generators, and with</h1>
+<p>An <strong>iterable</strong> can produce an iterator, usually through <code>__iter__</code>. An <strong>iterator</strong> produces the next value through <code>__next__</code> and raises <code>StopIteration</code> when it is done. A <code>for</code> loop gets an iterator and calls next until that exception. You rarely write the class form. You write a generator.</p>
+<p>A <strong>generator</strong> is a function that uses <code>yield</code>. Calling it does not run the body. It returns a generator object. Each <code>next</code> runs until the next <code>yield</code>, pauses, and resumes there later. Generators produce one item at a time, so a billion-row scan does not become a billion-row list.</p>
+<pre>def countdown(n):
+    while n &gt; 0:
+        yield n
+        n -= 1
+
+for value in countdown(3):
+    print(value)</pre>
+<p><code>yield from other</code> forwards each item from another iterable. A generator expression is the lazy cousin of a list comprehension: <code>(n * n for n in range(10))</code>. It does not compute the squares until something walks it. Walking it twice does nothing the second time. It is spent.</p>
+<p><code>itertools</code> holds the small tools: <code>chain</code>, <code>islice</code>, <code>groupby</code>, <code>count</code>, <code>cycle</code>. Reach for it before you write a nested loop that only reorganizes items.</p>
+
+<h2>Context managers</h2>
+<p><code>with</code> guarantees cleanup. The object’s <code>__enter__</code> runs at the start. <code>__exit__</code> runs at the end, whether the block succeeded, returned, or raised. Files, locks, and database transactions are the usual examples.</p>
+<p><code>contextlib.contextmanager</code> lets you write one as a generator: the code before <code>yield</code> is enter, the code after is exit.</p>
+<pre>from contextlib import contextmanager
+
+@contextmanager
+def section(title):
+    print("start", title)
+    try:
+        yield
+    finally:
+        print("end", title)</pre>
+
+<h1>15. Decorators</h1>
+<p>A decorator is a function that takes a function and returns a function, applied with <code>@</code>. The two spellings below are the same.</p>
+<pre>def shout(func):
+    def wrapper(*args, **kwargs):
+        return func(*args, **kwargs).upper()
+    return wrapper
+
+@shout
+def greet(name):
+    return f"hello {name}"</pre>
+<p>Use <code>functools.wraps</code> so the wrapper keeps the original name and docstring.</p>
+<pre>import functools
+
+def shout(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        return str(func(*args, **kwargs)).upper()
+    return wrapper</pre>
+<p>A decorator can take arguments by adding one more nested function: the outer function receives the arguments and returns the real decorator. Built-in decorators you will use constantly are <code>@property</code>, <code>@classmethod</code>, <code>@staticmethod</code>, <code>@dataclass</code>, and <code>@functools.lru_cache</code> or <code>@functools.cache</code> for a pure function you want to memoize. Cache only functions whose results depend only on their arguments. A cached function that reads a global or the clock will lie.</p>
+
+<h1>16. Modules, packages, and installs</h1>
+<p>A <strong>module</strong> is a <code>.py</code> file. A <strong>package</strong> is a folder of modules. <code>import math</code> loads the module and binds the name <code>math</code>. <code>from math import sqrt</code> binds <code>sqrt</code> itself. <code>import math as m</code> renames it locally.</p>
+<p>Importing runs the module’s top level once and caches the module in <code>sys.modules</code>. A second import does not run it again. Keep the top level boring: definitions, not a program that starts work. Put the program under this guard so importing the file does not launch it:</p>
+<pre>def main():
+    print("running")
+
+if __name__ == "__main__":
+    main()</pre>
+<p><code>__name__</code> is <code>"__main__"</code> only when that file was the one you started. When another file imports it, <code>__name__</code> is the module’s name.</p>
+<p>A package folder may contain <code>__init__.py</code>. That file runs when the package is imported. Relative imports, <code>from . import codec</code>, stay inside the package. They work when the package is imported as a package, and they fail if you run an inner file as a loose script. Run <code>python -m package.module</code> instead.</p>
+<p>The import path is <code>sys.path</code>: the script’s directory, then installed locations. Do not modify it in ordinary programs. Name your modules so they do not shadow the standard library. A file called <code>json.py</code> will hide the real <code>json</code>.</p>
+
+<h2>Environments and packages</h2>
+<p>A virtual environment is a private folder of installed libraries for one project, so project A’s library version does not change project B.</p>
+<pre>python -m venv .venv
+.venv\Scripts\activate
+python -m pip install requests</pre>
+<p><code>pip</code> installs packages from the Python Package Index and from local folders. Pin versions in a requirements file or, better for a real project, declare them in <code>pyproject.toml</code>. That file is also where a tool reads the project’s name, the Python version it needs, and the build backend. You do not need to publish a package to benefit from a venv and a pinned list. You need them the moment a program must run again next month.</p>
+<p>The standard library ships with Python. Third-party packages do not. Prefer the standard library when it does the job.</p>
+
+<h1>17. Type hints</h1>
+<p>Hints describe the kinds of values you intend. Python does not enforce them while the program runs. A type checker such as <code>pyright</code> or <code>mypy</code> reads them as a separate step. Hints pay off in anything larger than a script: editors complete names, and a wrong argument is caught before the program runs.</p>
+<pre>def clamp(n: int, low: int, high: int) -> int:
+    if n &lt; low:
+        return low
+    if n &gt; high:
+        return high
+    return n
+
+def find(code: str) -> str | None:
+    return codes.get(code)</pre>
+<p><code>str | None</code> means a string or <code>None</code>. <code>list[str]</code>, <code>dict[str, int]</code>, and <code>tuple[int, int]</code> name the insides. <code>tuple[int, ...]</code> is a tuple of any length of ints. A bare <code>list</code> hint does not say what the list holds.</p>
+<pre>from collections.abc import Callable, Iterable, Sequence
+
+def total(nums: Iterable[int]) -> int:
+    return sum(nums)
+
+def apply(fn: Callable[[int], int], n: int) -> int:
+    return fn(n)</pre>
+<p>Hint the most general thing you actually use. If you only iterate, hint <code>Iterable</code>. If you index and take <code>len</code>, hint <code>Sequence</code>.</p>
+<p>A <code>Protocol</code> names a structural shape. Any object with those methods satisfies it, with or without a shared base class.</p>
+<pre>from typing import Protocol
+
+class Writer(Protocol):
+    def write(self, text: str) -> int: ...</pre>
+<p>A <code>TypedDict</code> describes a dict with known keys, which is what JSON objects become. A dataclass is still the better choice when you own the type. Use <code>TypedDict</code> at the edge where the data really is a dict.</p>
+<p>Generics use <code>TypeVar</code> or, in current Python, a type parameter: <code>class Box[T]</code>. You need them when a function’s result type depends on its input type, such as “this cache stores whatever type you put in.”</p>
+<p>Casts and <code>Any</code> switch the checker off for that expression. Use them at a boundary you do not control, and keep them small. A hint of <code>Any</code> on every function is the same as no hints.</p>
+
+<h1>18. The standard library you actually use</h1>
+<p>Learn these modules by the job they do. The full library is larger. This is the set you should be able to reach for without searching.</p>
+<table>
+<tr><th>Job</th><th>Tool</th></tr>
+<tr><td>Paths and small file reads</td><td><code>pathlib.Path</code></td></tr>
+<tr><td>JSON text</td><td><code>json</code></td></tr>
+<tr><td>CSV tables</td><td><code>csv</code></td></tr>
+<tr><td>Dates and times</td><td><code>datetime</code>, with timezone-aware values</td></tr>
+<tr><td>Counts, default dicts, double-ended queues, named tuples</td><td><code>collections</code></td></tr>
+<tr><td>Memoize, partial application, reduce, wraps</td><td><code>functools</code></td></tr>
+<tr><td>Iterator helpers</td><td><code>itertools</code></td></tr>
+<tr><td>Patterns in text</td><td><code>re</code></td></tr>
+<tr><td>Logs</td><td><code>logging</code></td></tr>
+<tr><td>Command-line flags</td><td><code>argparse</code></td></tr>
+<tr><td>Fixed constants</td><td><code>enum</code></td></tr>
+<tr><td>Shallow and deep copies</td><td><code>copy</code></td></tr>
+<tr><td>Math on numbers</td><td><code>math</code></td></tr>
+<tr><td>Simulations and shuffles</td><td><code>random</code></td></tr>
+<tr><td>Tokens, passwords, secrets</td><td><code>secrets</code></td></tr>
+<tr><td>Environment variables</td><td><code>os.environ</code></td></tr>
+<tr><td>Running a process</td><td><code>subprocess</code></td></tr>
+<tr><td>Exact decimals</td><td><code>decimal</code></td></tr>
+<tr><td>In-memory text files for tests</td><td><code>io.StringIO</code></td></tr>
+</table>
+
+<h2>datetime</h2>
+<p>A <strong>naive</strong> datetime has no timezone. An <strong>aware</strong> datetime has one. Mix them and Python raises, which is the right failure. Store instants as aware UTC. Convert to a local zone only for display.</p>
+<pre>from datetime import datetime, timezone
+now = datetime.now(timezone.utc)
+stamp = now.isoformat()</pre>
+<p><code>date</code> is a calendar day. <code>timedelta</code> is a duration. Subtracting two datetimes returns a timedelta.</p>
+
+<h2>collections</h2>
+<pre>from collections import Counter, defaultdict, deque
+
+counts = Counter(["a", "b", "a"])
+counts.most_common(1)
+
+groups = defaultdict(list)
+groups["priya"].append(1)
+
+line = deque()
+line.append(1)
+line.appendleft(0)
+line.pop()</pre>
+
+<h2>re</h2>
+<p>A regular expression is a tiny language for text shapes. <code>re.search</code> finds a match anywhere. <code>re.fullmatch</code> requires the whole string to match. <code>re.findall</code> returns the matched pieces. Compile a pattern you reuse. Prefer string methods when the job is a fixed prefix, suffix, or split. Reach for <code>re</code> when the shape varies: an email-like token, a repeated number, optional pieces.</p>
+<pre>import re
+match = re.fullmatch(r"[A-Z]{2}\d{2}", "KA01")
+code = match.group(0) if match else None</pre>
+
+<h2>logging</h2>
+<p>Levels, from quieter to louder: DEBUG, INFO, WARNING, ERROR, CRITICAL. Configure once at program start. Get a logger per module with <code>logging.getLogger(__name__)</code>. Log an event with fields, not a paragraph you will regret parsing.</p>
+<pre>import logging
+log = logging.getLogger(__name__)
+log.info("opened code=%s", code)</pre>
+<p>The <code>%s</code> style lets the logger skip the formatting work when the level is disabled. Pass exceptions with <code>log.exception("save failed")</code> inside an <code>except</code> block so the traceback is recorded.</p>
+
+<h2>argparse and subprocess</h2>
+<pre>import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument("path")
+parser.add_argument("--limit", type=int, default=10)
+args = parser.parse_args()</pre>
+<p><code>subprocess.run(["python", "tool.py"], check=True)</code> runs a program and raises if it exits with an error. Pass arguments as a list. A single string with <code>shell=True</code> hands that string to a shell, which is how untrusted text becomes a command. Keep <code>shell=False</code> unless you have a specific reason and a trusted command.</p>
+
+<h2>random and secrets</h2>
+<p><code>random</code> is for games, samples, and tests. It is not for passwords or tokens. <code>secrets.token_urlsafe(16)</code> and <code>secrets.choice</code> draw from the operating system’s cryptographic source. Seeds exist so a simulation can be repeated: <code>random.seed(0)</code>.</p>
+
+<h1>19. Concurrency</h1>
+<p>Concurrency means the program has more than one thing in progress. It does not always mean more than one CPU core is running your Python at the same instant.</p>
+
+<h2>The GIL</h2>
+<p>CPython, the usual interpreter, has a global interpreter lock. One thread at a time runs Python bytecode. Threads still help when the work waits on the network, a disk, or a database, because those waits release the lock and another thread can run. Threads do not speed up a tight loop of pure Python arithmetic. For that, use separate processes, or a library that does the heavy work in native code and releases the lock.</p>
+
+<h2>Threads</h2>
+<p>A <code>Thread</code> runs a function beside the caller. Share objects only with a plan. A lock (<code>threading.Lock</code>) lets one thread into a block at a time. Acquire locks in a fixed order so two threads cannot each hold the lock the other wants. Prefer handing each thread its own data and collecting results through a <code>queue.Queue</code>.</p>
+<pre>from threading import Thread
+
+def work(name, out):
+    out.append(name.upper())
+
+box = []
+thread = Thread(target=work, args=("priya", box))
+thread.start()
+thread.join()</pre>
+<p>The list append here is one bytecode operation and is safe in CPython. A read-modify-write such as <code>n = n + 1</code> on a shared <code>n</code> is not safe. Use a lock or a <code>queue</code>.</p>
+
+<h2>Processes</h2>
+<p><code>multiprocessing</code> and <code>concurrent.futures.ProcessPoolExecutor</code> run functions in other interpreters, each with its own GIL. Arguments and return values are pickled, which means copied across a boundary. Processes pay startup cost and cannot share an ordinary list. Use them for CPU-heavy work that splits into independent chunks.</p>
+<pre>from concurrent.futures import ProcessPoolExecutor
+
+def square(n):
+    return n * n
+
+if __name__ == "__main__":
+    with ProcessPoolExecutor() as pool:
+        print(list(pool.map(square, [1, 2, 3])))</pre>
+<p>The <code>__main__</code> guard is required on Windows. The child process imports the module, and without the guard it would spawn more children forever.</p>
+
+<h2>asyncio</h2>
+<p><code>async</code> and <code>await</code> are cooperative concurrency on one thread. A task runs until it awaits something, usually I/O. The event loop then runs another task. Nothing preempts you. A CPU loop or a blocking <code>time.sleep</code> inside an async function freezes every task. Use <code>asyncio.sleep</code>, async libraries, and <code>asyncio.to_thread</code> for a blocking call you cannot avoid.</p>
+<pre>import asyncio
+
+async def fetch(name):
+    await asyncio.sleep(0.1)
+    return name.upper()
+
+async def main():
+    results = await asyncio.gather(fetch("a"), fetch("b"))
+    return results
+
+asyncio.run(main())</pre>
+<p><code>gather</code> starts the tasks together and waits for all of them. One event loop per thread is the rule. <code>asyncio.run</code> creates the loop, runs the coroutine, and closes the loop.</p>
+<p>Choose by the bottleneck. Waiting on many sockets: asyncio or threads. Burning CPU in Python: processes. A single straightforward script: neither.</p>
+
+<h1>20. Tests, debugging, and style</h1>
+<h2>Tests</h2>
+<p>A test calls a function with a fixed input and checks the output. <code>pytest</code> is the tool most projects use. A test is a function whose name starts with <code>test_</code>, and a failing <code>assert</code> is a failing test.</p>
+<pre>def clamp(n, low, high):
+    return max(low, min(high, n))
+
+def test_clamp_low():
+    assert clamp(-1, 0, 10) == 0
+
+def test_clamp_inside():
+    assert clamp(4, 0, 10) == 4</pre>
+<p>Run <code>python -m pytest</code>. Test the edges: empty input, one item, the boundary value, the error case. For exceptions:</p>
+<pre>import pytest
+
+def test_rejects_blank():
+    with pytest.raises(ValueError):
+        parse(" ")</pre>
+<p>The standard library’s <code>unittest</code> does the same job with classes and <code>self.assertEqual</code>. Knowing either is enough. Mock only the edges you do not own: the clock, the network, a random source. A test that mocks the function it claims to test proves nothing.</p>
+<p>Give tests a fake clock and a fake repository, the same idea as the system-design book. Pass them in. Do not make the function reach for a hidden global that the test cannot replace.</p>
+
+<h2>Debugging</h2>
+<p>Read the traceback first. Then print the value you did not expect, or drop into the debugger with <code>breakpoint()</code>. From there, <code>n</code> steps to the next line, <code>s</code> steps into a call, <code>c</code> continues, <code>p expr</code> prints an expression. <code>repr(value)</code> shows a value more honestly than <code>print</code> when spaces and types matter.</p>
+<p>Bisect a mystery: comment half the path, or return early, until the surprise disappears. The last piece you removed is where to look.</p>
+
+<h2>Style</h2>
+<p>PEP 8 is the community style. The parts that matter daily:</p>
+<ul>
+<li>Four spaces per indent. Lines around 88 or 99 characters, not a hard religion.</li>
+<li>Functions and variables in <code>snake_case</code>. Classes in <code>CapWords</code>. Constants in <code>UPPER_SNAKE</code>.</li>
+<li>Two blank lines between top-level functions and classes.</li>
+<li>Imports in three groups: standard library, third party, your package. One import per line for modules. Avoid <code>from module import *</code>.</li>
+<li>Names that say what the value is. <code>elapsed_seconds</code> beats <code>t</code> once a function is longer than a few lines.</li>
+<li>A function does one job. If you describe it with “and,” consider splitting it.</li>
+<li>Raise specific exceptions. Return <code>None</code> only when absence is a normal answer, and hint <code>| None</code>.</li>
+</ul>
+<p>Formatters such as <code>ruff format</code> or <code>black</code> end arguments about whitespace. Linters such as <code>ruff</code> catch unused names, shadowing, and mutable defaults. Run them. They are part of knowing the language in a team.</p>
+
+<h1>21. Pitfalls</h1>
+<p>These are the mistakes that happen after the syntax is familiar.</p>
+<ul>
+<li><strong>Shared mutable default.</strong> <code>def f(items=[])</code> uses one list forever. Use <code>None</code> and create the list inside.</li>
+<li><strong>Alias versus copy.</strong> <code>b = a</code> shares a mutable object. Copy when you mean a separate value.</li>
+<li><strong>Late closure.</strong> Lambdas in a loop share the loop variable. Bind it with a default argument.</li>
+<li><strong><code>is</code> for values.</strong> Use <code>is</code> for <code>None</code>. Use <code>==</code> for everything you mean as a value. Small integers may share objects by accident. Do not depend on that.</li>
+<li><strong>Float money.</strong> Use <code>Decimal</code>.</li>
+<li><strong>Mutable dict keys.</strong> Only hashables. Do not change an object that is already in a set.</li>
+<li><strong>Modifying a list while looping over it.</strong> Iterate over a copy, or build a new list.</li>
+<li><strong>Except that is too wide,</strong> then a bug disappears into the handler. Catch the type you expect.</li>
+<li><strong>Bare open without <code>with</code></strong> and without an encoding.</li>
+<li><strong>Naive and aware datetimes</strong> mixed in one expression.</li>
+<li><strong>Shadowing a builtin.</strong> Naming a variable <code>list</code> or <code>id</code> hides the builtin in that scope.</li>
+<li><strong>A module named like the standard library,</strong> such as <code>random.py</code> in your folder.</li>
+<li><strong>Forgetting the main guard</strong> before using <code>multiprocessing</code> on Windows.</li>
+<li><strong>Blocking inside <code>async def</code>.</strong> The whole loop waits with you.</li>
+<li><strong>Caching a function that is not pure.</strong></li>
+<li><strong>Comparing floats with <code>==</code></strong> after arithmetic. Compare with a tolerance, or use decimals.</li>
+<li><strong>Assuming dict order did not exist.</strong> It does, since 3.7. Still do not use a dict as a priority queue. Use a heap (<code>heapq</code>) when you always need the smallest item.</li>
+</ul>
+<pre>import heapq
+heap = []
+heapq.heappush(heap, (2, "b"))
+heapq.heappush(heap, (1, "a"))
+first = heapq.heappop(heap)   # (1, "a")</pre>
+
+<h1>22. Glossary and a study plan</h1>
+<table>
+<tr><th>Term</th><th>Meaning</th></tr>
+<tr><td>Object</td><td>A value with a type and an identity</td></tr>
+<tr><td>Name</td><td>A label pointing at an object. Assignment moves the label</td></tr>
+<tr><td>Immutable</td><td>The object’s value cannot change. int, str, tuple</td></tr>
+<tr><td>Mutable</td><td>The object can change in place. list, dict, set, most instances</td></tr>
+<tr><td>Identity</td><td>Whether two names are the same object. Test with <code>is</code></td></tr>
+<tr><td>Iterable</td><td>Something a <code>for</code> loop can walk</td></tr>
+<tr><td>Iterator</td><td>The walker. Produces the next item or stops</td></tr>
+<tr><td>Generator</td><td>A function that yields items and pauses between them</td></tr>
+<tr><td>Scope</td><td>The region where a name is visible. LEGB</td></tr>
+<tr><td>Closure</td><td>A function that keeps using variables from where it was created</td></tr>
+<tr><td>Exception</td><td>An object raised to report that a statement could not finish</td></tr>
+<tr><td>Instance</td><td>One object built from a class</td></tr>
+<tr><td>Method</td><td>A function defined on a class, receiving the instance as <code>self</code></td></tr>
+<tr><td>MRO</td><td>The order parent classes are searched</td></tr>
+<tr><td>Decorator</td><td>A function that wraps another function</td></tr>
+<tr><td>Context manager</td><td>An object that <code>with</code> uses to set up and clean up</td></tr>
+<tr><td>Module</td><td>One <code>.py</code> file that can be imported</td></tr>
+<tr><td>Package</td><td>A folder of modules</td></tr>
+<tr><td>Hint</td><td>A note about types, checked by a type checker, not by Python itself</td></tr>
+<tr><td>GIL</td><td>The lock that lets one thread run Python bytecode at a time</td></tr>
+<tr><td>Awaitable</td><td>An object you can <code>await</code>, usually a coroutine</td></tr>
+<tr><td>Hashable</td><td>An object that can be a dict key or a set member. It needs a stable hash</td></tr>
+</table>
+
+<h2>What “I know Python” means</h2>
+<p>You can write a small program that reads a file, computes with dicts and lists, defines a function and a class, handles a bad input with an exception, and tests the function. You can explain why two names saw the same list change. You can say when you want a thread, a process, or <code>async</code>. You can read a traceback. That is the language. Libraries for the web, data, or machine learning sit on top of this map. They are vocabularies of functions. They are not a second language.</p>
+
+<h2>Ten sessions</h2>
+<ol>
+<li>Names, mutability, <code>is</code> and <code>==</code>. Draw boxes and arrows for three tiny programs.</li>
+<li>Strings, f-strings, slices, and a file read with <code>pathlib</code>.</li>
+<li>Lists, dicts, sets, comprehensions. Solve “count the words in a file.”</li>
+<li>Functions, defaults, <code>*args</code>, scope, and the closure trap.</li>
+<li>Exceptions. Turn the word count into a function that raises on a missing file and returns a <code>Counter</code>.</li>
+<li>Classes, dataclass, property, inheritance. Model a ticket with <code>close</code>.</li>
+<li>Generators and <code>with</code>. Stream the word count so the whole file is not one string if you can avoid it. Line by line already does this.</li>
+<li>A decorator that times a function, using <code>wraps</code>. Add <code>lru_cache</code> to a pure function and show a second call is instant.</li>
+<li>Type hints on the word counter. Run a type checker if one is installed.</li>
+<li>One test file with pytest. One threaded or async example that waits, and one sentence on why a CPU loop would not speed up under threads.</li>
+</ol>
+<p>After those ten, pick a project you care about and keep this PDF closed until a concept fails you. Then open that chapter only. The concepts are the ones in the contents. Knowing them is predicting the next line, not recognizing the heading.</p>
+<p class="end">End of the offline Python guide.</p>
+
+<h1>23. Interview questions</h1>
+<p>These are the questions interviewers use to see whether the concepts in this book are available when you speak. Each one has the point of the question and an answer you can say aloud. A strong answer is short, then one example, then the trap if there is one. You do not need to recite the paragraph.</p>
+
+<h2>Names and objects</h2>
+<p><strong>What is the difference between <code>is</code> and <code>==</code>?</strong> <code>==</code> asks whether the values compare equal. <code>is</code> asks whether both names point at the same object. Use <code>is</code> for <code>None</code>. Two lists with the same items are <code>==</code> and are not <code>is</code>.</p>
+<p><strong>Are arguments passed by value or by reference?</strong> Neither, in the C++ sense. The parameter name is stuck on the same object the caller passed. Reassigning the parameter moves only the local label. Mutating the object, such as <code>append</code>, is visible to the caller because there is one object.</p>
+<p><strong>What is mutable and what is immutable?</strong> Immutable: <code>int</code>, <code>float</code>, <code>str</code>, <code>tuple</code>, <code>frozenset</code>, <code>bytes</code>. Mutable: <code>list</code>, <code>dict</code>, <code>set</code>, <code>bytearray</code>, and most class instances. Immutability is why strings and tuples can be dict keys and why “changing” an int actually binds a new object.</p>
+<p><strong>Why did changing one list change another?</strong> Both names were labels on one list. Assignment does not copy. A shallow copy copies the outer list and still shares the inner objects. <code>copy.deepcopy</code> copies the inners too.</p>
+<p><strong>What does <code>a, b = b, a</code> do?</strong> The right side builds a tuple of the current values, then the left side unpacks it. No temporary variable is required.</p>
+
+<h2>Types and text</h2>
+<p><strong>Why is <code>0.1 + 0.2</code> not <code>0.3</code>?</strong> Floats are binary fractions with limited bits. Those decimals are not exact in binary. For money, use <code>decimal.Decimal</code> constructed from strings.</p>
+<p><strong>What is the difference between <code>str</code> and <code>bytes</code>?</strong> <code>str</code> is Unicode text. <code>bytes</code> is raw octets. Convert with <code>encode</code> and <code>decode</code>, usually UTF-8. You cannot mix them with <code>+</code>.</p>
+<p><strong>How do you join many strings?</strong> <code>" ".join(parts)</code>. Repeated <code>+=</code> in a loop builds many intermediate strings. Join walks the pieces once.</p>
+<p><strong>What is an f-string?</strong> A string literal with expressions in braces, evaluated when that line runs: <code>f"{name} scored {score}"</code>.</p>
+<p><strong>Which values are false?</strong> <code>None</code>, <code>False</code>, numeric zero, and empty containers and strings. An empty list is false and is not <code>None</code>. Test absence with <code>is None</code>.</p>
+
+<h2>Collections</h2>
+<p><strong>When do you pick a list, a tuple, a dict, or a set?</strong> A list is an ordered collection you edit. A tuple is a fixed record. A dict is a lookup by key. A set is unique items with fast membership. Dict keys and set items must be hashable.</p>
+<p><strong>Why can a tuple be a dict key while a list cannot?</strong> A key’s hash must stay stable. A list can change after insertion, so it is unhashable. A tuple is hashable only when every item inside it is hashable.</p>
+<p><strong>Are dicts ordered?</strong> Yes. Since Python 3.7, insertion order is part of the language. That does not make a dict a priority queue. Use <code>heapq</code> when you always need the smallest item.</p>
+<p><strong>What is the cost of <code>in</code>?</strong> Average constant time for a dict or a set. Linear for a list or a tuple, because those are scanned.</p>
+<p><strong>What do <code>append</code> and <code>insert(0, x)</code> cost?</strong> Append is amortized constant time. Insert at the front moves every later item, so it is linear. A queue that grows at both ends wants <code>collections.deque</code>.</p>
+<p><strong><code>list</code> versus tuple in an interview sentence.</strong> Same indexing and slicing. A list can grow and change slots. A tuple cannot, so it can be a key and it signals a fixed shape.</p>
+<p><strong>What does <code>sorted</code> return, and what does <code>list.sort</code> return?</strong> <code>sorted</code> returns a new list. <code>list.sort</code> sorts in place and returns <code>None</code>. Both take <code>key</code> and <code>reverse</code>. Python’s sort is stable: equal keys keep their original order.</p>
+
+<h2>Control flow and functions</h2>
+<p><strong>What is a default-argument bug?</strong> Defaults are created once, at definition. <code>def add(item, bucket=[])</code> shares one list across calls. Use <code>bucket=None</code> and create a new list inside the function.</p>
+<p><strong>What are <code>*args</code> and <code>**kwargs</code>?</strong> <code>*args</code> collects extra positional arguments into a tuple. <code>**kwargs</code> collects extra keyword arguments into a dict. In a call, <code>*seq</code> and <code>**mapping</code> unpack outward.</p>
+<p><strong>What is LEGB?</strong> The lookup order for a name: local, enclosing function, global module, builtin. Assignment inside a function makes the name local for the whole function. <code>global</code> and <code>nonlocal</code> are how you assign further out.</p>
+<p><strong>What is a closure?</strong> A function that uses variables from the function that created it, after that outer call has returned. In a loop, every lambda sees the final value of the loop variable unless you bind the current value as a default: <code>lambda i=i: i</code>.</p>
+<p><strong>What is the <code>else</code> on a <code>for</code> loop?</strong> It runs when the loop ended without <code>break</code>. It is the “not found” branch of a search.</p>
+<p><strong>What does <code>//</code> do?</strong> Floor division. It divides and rounds toward negative infinity, which is not the same as truncating toward zero for negative numbers.</p>
+
+<h2>Classes</h2>
+<p><strong>What is <code>self</code>?</strong> The instance the method was called on. You declare it as the first parameter. The call <code>obj.method()</code> passes <code>obj</code> in for you.</p>
+<p><strong><code>@classmethod</code> versus <code>@staticmethod</code> versus a normal method.</strong> A normal method receives the instance. A classmethod receives the class, which is how alternate constructors stay correct for subclasses. A staticmethod receives neither. If it does not need the class, a module-level function is often clearer.</p>
+<p><strong>What is <code>@property</code>?</strong> A method that callers read like an attribute. Use it when a stored field later becomes a calculation and you do not want to change every caller.</p>
+<p><strong><code>__str__</code> versus <code>__repr__</code>.</strong> <code>__repr__</code> is the unambiguous developer form, ideally enough to see how the value was built. <code>__str__</code> is the friendly form <code>print</code> prefers. If only <code>__repr__</code> exists, <code>print</code> uses it.</p>
+<p><strong><code>__init__</code> versus <code>__new__</code>.</strong> <code>__new__</code> creates the instance and is the place to intervene for immutables such as <code>tuple</code> subclasses. <code>__init__</code> initializes an instance that already exists. Almost every class you write only needs <code>__init__</code>.</p>
+<p><strong>What is the MRO?</strong> The method resolution order: the sequence of classes Python searches for an attribute. Single inheritance is a straight line. Multiple inheritance uses the C3 order. Read <code>Class.__mro__</code> when <code>super()</code> surprises you.</p>
+<p><strong>What does a leading underscore mean?</strong> <code>_name</code> means internal by convention. <code>__name</code> is mangled to <code>_Class__name</code> so a subclass does not override it by accident. Neither one is a security barrier.</p>
+<p><strong>Why a dataclass?</strong> The class mostly stores fields. The decorator writes <code>__init__</code>, <code>__repr__</code>, and <code>__eq__</code>. <code>frozen=True</code> makes instances hashable if the fields are hashable.</p>
+<p><strong>What is duck typing?</strong> If an object has the methods you call, it is acceptable. You do not require a particular base class. A <code>Protocol</code> is that idea written down for a type checker.</p>
+
+<h2>Errors, files, and <code>with</code></h2>
+<p><strong>What runs in <code>try</code>, <code>except</code>, <code>else</code>, and <code>finally</code>?</strong> <code>try</code> is the risky work. <code>except</code> handles a matching exception. <code>else</code> runs only when <code>try</code> did not raise. <code>finally</code> runs in every case, including after a <code>return</code>, and is where you release a resource if you are not using <code>with</code>.</p>
+<p><strong>Why avoid a bare <code>except:</code>?</strong> It also catches <code>KeyboardInterrupt</code> and <code>SystemExit</code>, which inherit from <code>BaseException</code>, not <code>Exception</code>. Catch the type you can handle.</p>
+<p><strong>What is EAFP?</strong> Easier to ask forgiveness than permission. Try the operation and catch <code>KeyError</code> or <code>FileNotFoundError</code>. A check followed by the action can still fail if something changes in between.</p>
+<p><strong>What does <code>with</code> guarantee?</strong> <code>__enter__</code> runs at the start and <code>__exit__</code> runs when the block ends, including when it raises or returns. That is why files are opened with <code>with</code>. Always pass <code>encoding</code> for text.</p>
+<p><strong>What is <code>if __name__ == "__main__"</code>?</strong> That block runs only when the file is started directly. Importing the file sets <code>__name__</code> to the module name, so the program does not start as a side effect of the import. On Windows, <code>multiprocessing</code> needs this guard.</p>
+
+<h2>Iterators, generators, and decorators</h2>
+<p><strong>Iterable versus iterator.</strong> An iterable can produce an iterator, which a <code>for</code> loop does for you. An iterator remembers its position and returns the next item until it raises <code>StopIteration</code>. A list is iterable. Calling <code>iter</code> on it gives an iterator.</p>
+<p><strong>Why a generator?</strong> <code>yield</code> produces one item at a time and pauses. A large file or a long range does not become one giant list. Calling the generator function does not run the body. It returns the generator. A generator expression is spent after one walk.</p>
+<p><strong>List comprehension versus generator expression.</strong> Square brackets build the whole list now. Parentheses build a generator that computes on demand. Use the list when you need length, indexing, or several walks.</p>
+<p><strong>What is a decorator?</strong> A function that takes a function and returns a function. <code>@deco</code> above <code>def</code> is the same as <code>fn = deco(fn)</code> after the definition. Use <code>functools.wraps</code> so the wrapper keeps the original name and docstring.</p>
+<p><strong>What does <code>functools.lru_cache</code> assume?</strong> The function is pure: the same arguments always mean the same result, and the work is worth storing. A cached function that reads the clock or a global returns a stale answer.</p>
+
+<h2>Modules and types</h2>
+<p><strong>What is a virtual environment?</strong> A private folder of third-party packages for one project, so two projects can depend on different versions. Create it with <code>python -m venv .venv</code> and install with the <code>pip</code> inside it.</p>
+<p><strong>Do type hints change runtime behavior?</strong> No. The interpreter does not enforce them. A type checker such as pyright or mypy reads them as a separate step. <code>str | None</code> means a string or <code>None</code>.</p>
+<p><strong>What is a <code>Protocol</code>?</strong> A structural type. Any object with the listed methods matches, even with no shared base class. That is duck typing for the checker.</p>
+
+<h2>Concurrency</h2>
+<p><strong>What is the GIL?</strong> In CPython, a lock that allows one thread to run Python bytecode at a time. Threads still help for waiting on network or disk, because that waiting releases the lock. A pure Python CPU loop does not get faster with more threads. Use processes, or native code that releases the lock, for CPU work.</p>
+<p><strong>Thread, process, or asyncio?</strong> Threads for blocking I/O with ordinary libraries. Processes for CPU-bound Python. Asyncio for many concurrent sockets in one thread, using libraries that await. A blocking call inside <code>async def</code> freezes the loop.</p>
+<p><strong>Is <code>n = n + 1</code> safe across threads?</strong> No. Two threads can read the same <code>n</code> and both write the same next value. Use a lock, or do not share the variable. List <code>append</code> of one item is a different, simpler operation. Do not generalize from it.</p>
+<p><strong>What is a race?</strong> Two threads use the same data, the result depends on the order they run, and that order is not fixed. The fix is not to share, or to make the critical update atomic with a lock or a queue.</p>
+
+<h2>Short coding questions</h2>
+<p>Say the idea first, then write it. Handle the empty input aloud so the interviewer hears that you thought about it.</p>
+<p><strong>Count words in a file, case-insensitive.</strong> Open with <code>pathlib</code> or <code>with</code>, walk lines, <code>split</code>, and add to a <code>Counter</code> after <code>lower</code>. Do not read a huge file as one string if line-by-line works.</p>
+<pre>from collections import Counter
+from pathlib import Path
+
+def word_counts(path):
+    counts = Counter()
+    text = Path(path).read_text(encoding="utf-8")
+    for word in text.lower().split():
+        counts[word] += 1
+    return counts</pre>
+<p><strong>Find the first repeated character.</strong> Walk the string with a set of characters already seen. The first character already in the set is the answer. If the loop ends, there is no repeat. This is linear time and uses memory proportional to the alphabet you actually saw.</p>
+<pre>def first_repeat(text):
+    seen = set()
+    for char in text:
+        if char in seen:
+            return char
+        seen.add(char)
+    return None</pre>
+<p><strong>Group words that are anagrams.</strong> The key is the letters in sorted order. A dict of lists collects words that share a key.</p>
+<pre>def group_anagrams(words):
+    groups = {}
+    for word in words:
+        key = "".join(sorted(word))
+        groups.setdefault(key, []).append(word)
+    return list(groups.values())</pre>
+<p><strong>Two numbers in a list that add to a target.</strong> One pass, a dict from value already seen to its index. For each new number, ask whether <code>target - number</code> is already in the dict. Average linear time. Say what you return if no pair exists.</p>
+<pre>def two_sum(nums, target):
+    seen = {}
+    for index, num in enumerate(nums):
+        need = target - num
+        if need in seen:
+            return seen[need], index
+        seen[num] = index
+    return None</pre>
+<p><strong>Flatten one level of nested lists.</strong> A double comprehension or a loop that extends. Say whether deeper nesting is in scope. One level is <code>[item for row in rows for item in row]</code>.</p>
+<p><strong>Remove duplicates and keep the first-seen order.</strong> A dict preserves insertion order. <code>list(dict.fromkeys(items))</code> does it. A set would lose order.</p>
+<p><strong>Write a timer decorator.</strong> Take the function, return a wrapper that uses <code>*args, **kwargs</code>, records time around the call, and returns the original result. Apply <code>functools.wraps</code>.</p>
+<pre>import functools
+import time
+
+def timed(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        start = time.perf_counter()
+        try:
+            return func(*args, **kwargs)
+        finally:
+            elapsed = time.perf_counter() - start
+            print(f"{func.__name__} took {elapsed:.4f}s")
+    return wrapper</pre>
+<p><strong>Implement a tiny LRU in words.</strong> A dict plus order. On get, move the key to the most recently used end. On put past capacity, drop the least recently used key. The book’s system-design volume has a full class. In a Python interview, describe those two structures and the two operations before you write the nodes.</p>
+
+<h2>Questions you can ask back</h2>
+<p>When they invite questions, pick one that shows you care how the code is maintained: how they test, how they pin dependencies, and whether CPU work and I/O work are separated in the service you would join. You are not proving you read a list. You are showing you know which concepts touch the job.</p>
+
+<h2>How to practice</h2>
+<ol>
+<li>Cover the answer. Say yours out loud in under a minute.</li>
+<li>Uncover and keep only the sentence you missed.</li>
+<li>For each coding question, write it in a file and run it, including the empty input and a one-item input.</li>
+<li>Stop when you can answer the GIL, the mutable default, <code>is</code> versus <code>==</code>, a generator, and a decorator without looking. Those five separate people who have used Python from people who have read a list of keywords.</li>
+</ol>
+<p class="end">End of the interview questions.</p>
+
+</body></html>

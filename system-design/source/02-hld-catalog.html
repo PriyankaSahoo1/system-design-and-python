@@ -1,0 +1,273 @@
+<h1>7. Caching</h1>
+<p>A cache holds a copy so the next reader skips a slower store. You add one when the same read happens over and over, and a slightly older copy is acceptable for a defined time.</p>
+
+<h2>Where it sits</h2>
+<ul>
+<li><strong>Browser and CDN.</strong> Close to the user. Good for public files and responses that are the same for everyone.</li>
+<li><strong>Application memory.</strong> Fastest, and private to one server. A second server has a cold copy. Useful for tiny, process-local data.</li>
+<li><strong>Shared cache</strong> (a system such as Redis or Memcached). Every application server sees the same shelf. This is the usual box in an HLD diagram.</li>
+</ul>
+
+<h2>How writes meet the shelf</h2>
+<table>
+<tr><th>Style</th><th>What happens</th><th>You accept</th></tr>
+<tr><td>Cache-aside</td><td>The application reads the cache. On a miss it reads the database and puts the value in the cache. Writes update the database and delete or replace the cache key.</td><td>A brief window where the cache is empty or old. This is the default for TinyLink.</td></tr>
+<tr><td>Read-through</td><td>The application asks only the cache. On a miss the cache library loads from the database.</td><td>The same window, with the load hidden inside the cache client.</td></tr>
+<tr><td>Write-through</td><td>A write updates the cache and the database before success returns.</td><td>Slower writes. The cache matches the database after each successful write.</td></tr>
+<tr><td>Write-back</td><td>A write updates the cache and returns. A later flush writes the database.</td><td>Very fast writes, and lost data if the cache dies before the flush.</td></tr>
+<tr><td>Write-around</td><td>A write goes to the database, and the cache key is deleted. The next read fills the cache.</td><td>The next read is a miss. You avoid filling the cache with data nobody rereads.</td></tr>
+</table>
+<p>Deleting a key on write (invalidation) is safer than updating it in place when several kinds of writes exist. A stale key with a <strong>TTL</strong> (time to live) is a backstop: even if you forget to delete, the copy dies on schedule. TTL alone makes the maximum staleness equal to the TTL. Invalidation plus TTL is the usual pair.</p>
+
+<h2>Eviction</h2>
+<p>The shelf has a size. When it is full, something leaves.</p>
+<ul>
+<li><strong>LRU,</strong> least recently used. Drop what nobody has touched in the longest time. A strong default.</li>
+<li><strong>LFU,</strong> least frequently used. Drop what is used least often. Better when a few keys are steady favorites, and worse right after a key becomes popular, because it has a low count so far.</li>
+<li><strong>FIFO.</strong> Drop the oldest resident, regardless of use.</li>
+</ul>
+
+<h2>Stampede</h2>
+<p>A popular key expires. A thousand requests miss at once and all query the database. That is a <strong>thundering herd</strong>, also called a cache stampede. Defenses:</p>
+<ul>
+<li><strong>Single flight.</strong> The first miss loads the database. The others wait for that one load and share the result.</li>
+<li><strong>Lock on the key</strong> with a short timeout, so only one loader runs.</li>
+<li><strong>Early refresh.</strong> Before the TTL hits zero, one request refreshes the value while others still receive the old one.</li>
+<li>Serve a slightly stale value while a refresh runs. The reader is told, by your own rule, how old is still allowed.</li>
+</ul>
+
+<h2>What to cache, and what to leave</h2>
+<p>Cache the hot read that is expensive and reusable: TinyLink’s code to long URL, a rendered feed page, a product page. Skip data that is unique per request and never reused. Skip data whose staleness would be a serious bug, such as a one-time password, unless the TTL is the feature. Remember that a cache is not the source of truth. You must be able to rebuild it.</p>
+<p>A famous key that everyone wants is a <strong>hot key</strong>. One cache process can saturate on it. Defenses: replicate that key to several cache nodes and spread reads, or keep an extra copy in application memory for a second or two.</p>
+
+<h1>8. Names, doors, and distance</h1>
+<h2>DNS</h2>
+<p>People type names. Machines use IP addresses. <strong>DNS</strong> answers “what address is <code>tiny.link</code>?” The answer can be cached at the laptop, at the company resolver, and at the DNS provider. A short DNS TTL lets you move traffic quickly. A long TTL makes the name survive a DNS outage and makes moves slow. The address you publish is often the load balancer, not a single application server.</p>
+
+<h2>Load balancers</h2>
+<p>A <strong>layer 4</strong> balancer forwards TCP connections. It is fast and unaware of HTTP. A <strong>layer 7</strong> balancer understands HTTP, so it can route <code>/images</code> to one pool and <code>/api</code> to another, and it can retry an idempotent GET against a different server.</p>
+<p>Spreading policies: round robin, fewest active connections, or a hash of the client so the same client prefers the same server. Prefer-the-same-server is <strong>sticky sessions</strong>. Stickiness is a crutch for a server that kept session state in memory. Stateless servers do not need it. Health checks remove a dead server from the pool. The balancer itself must be redundant: two of them, with one address that can move.</p>
+
+<h2>CDN</h2>
+<p>A CDN caches bytes at the edge, near the user. The <strong>origin</strong> is your real closet. The first user in a city misses and pulls from the origin. Neighbors hit the edge. You control freshness with cache headers and TTLs. A <strong>cache key</strong> is whatever makes two responses different: the URL, and sometimes a header such as language. If you forget to include a distinguishing header, two users can receive each other’s personalized page. Personalized HTML usually stays uncached. Images, video segments, and public scripts cache well.</p>
+<p>To purge, you delete by key or you change the URL (a new file name or query version). Changing the URL is the reliable kind of purge because old edges simply stop being asked.</p>
+
+<h1>9. Copies, consistency, and CAP</h1>
+<h2>Replication</h2>
+<p>One notebook is a single point of failure and a single disk. Replication keeps copies.</p>
+<ul>
+<li><strong>Synchronous.</strong> The leader waits until a follower has the write, then tells the client success. A crash loses less. The write is as slow as the follower.</li>
+<li><strong>Asynchronous.</strong> The leader tells the client success, then the follower catches up. Writes stay fast. If the leader dies before the follower catches up, those last writes can vanish. The gap is <strong>replication lag</strong>.</li>
+<li><strong>Semi-synchronous.</strong> The leader waits for one follower, and other followers catch up later.</li>
+</ul>
+<p>Reads can go to followers to spread load. A follower may be a second behind, so a user who just wrote can read their old value. <strong>Read-your-writes</strong> is the fix for that feeling: after a user writes, that user’s next reads go to the leader for a short time, or the read waits until the follower has passed that write’s position.</p>
+<p>Failover promotes a follower. Automatic failover needs a rule that avoids two leaders. Two leaders accepting writes is a <strong>split brain</strong>. The usual rule is a majority vote: a leader exists only if a majority of replicas agree it is the leader. A minority side stops accepting writes.</p>
+
+<h2>Quorums</h2>
+<p>With N copies, a write waits for W copies to acknowledge, and a read asks R copies. If R + W &gt; N, the read set and the write set overlap, so the read sees at least one copy that has the latest write. A common choice is N = 3, R = 2, W = 2. Raising W favors fresher data and slower writes. Lowering R favors fast reads. This arithmetic is the heart of quorum systems. Leader-based databases get a similar result by sending the read to the leader.</p>
+
+<h2>CAP, then PACELC</h2>
+<p>A <strong>partition</strong> is a cut in the network: some machines cannot reach others. While the cut lasts, a system chooses between two behaviors. <strong>Consistency</strong> here means every successful read sees the latest successful write. <strong>Availability</strong> means every request receives a non-error answer. During a partition you emphasize one of them.</p>
+<ul>
+<li>A <strong>CP</strong> path refuses or waits when it cannot be sure. A bank transfer and a seat sale lean this way.</li>
+<li>An <strong>AP</strong> path answers with the best local copy and repairs later. A view counter and a presence dot lean this way.</li>
+</ul>
+<p><strong>PACELC</strong> adds the quiet hours. If there is a partition (P), you choose availability or consistency (A or C). Else (E), even when the network is fine, you choose latency or consistency (L or C). Waiting for two distant replicas is a consistency choice you pay for on every write, even on a healthy day.</p>
+<p>TinyLink’s redirect path answers from cache and from whatever database copy it is allowed to read. Click counts are allowed to lag. A custom-code insert demands the unique index on the leader, because two people must not both believe they own <code>priya</code>.</p>
+
+<h2>A ladder of “how fresh”</h2>
+<ul>
+<li><strong>Strong / linearizable.</strong> There is a single order of operations. A read sees the latest completed write.</li>
+<li><strong>Read-your-writes.</strong> You see your own updates. Someone else might lag.</li>
+<li><strong>Monotonic reads.</strong> You never go backward in time. Once you have seen version 5, you do not later see version 4.</li>
+<li><strong>Eventual.</strong> Copies converge after updates stop. Before that, readers can disagree.</li>
+</ul>
+<p>Name the rung the product needs. “We need strong consistency” for a whole product is rarely true. Payments need a high rung. Feeds work on a lower rung.</p>
+
+<h1>10. Sharding</h1>
+<p>Sharding splits rows across machines so each machine holds a fraction. You shard when one machine’s disk, memory, or write rate is no longer enough. Replication copies the same rows for safety and read spread. Sharding divides rows. You usually do both: each shard has its own replicas.</p>
+
+<h2>How a row picks a home</h2>
+<table>
+<tr><th>Rule</th><th>How it works</th><th>Watch for</th></tr>
+<tr><td>Range</td><td>Ids 1–1,000,000 on shard A, the next million on shard B</td><td>Simple, and the newest range takes all the inserts</td></tr>
+<tr><td>Hash</td><td>hash(key) mod N</td><td>Even spread. Changing N moves almost every key</td></tr>
+<tr><td>Consistent hash</td><td>Keys and servers sit on a ring. A key walks clockwise to the next server</td><td>Adding a server moves only the keys on the neighboring arc</td></tr>
+<tr><td>Directory</td><td>A small lookup table says where the key lives</td><td>Flexible, and the directory itself must be fast and up</td></tr>
+</table>
+<p><strong>Consistent hashing</strong> in a little more detail. Picture a circle of positions. Each cache server is placed at several positions (virtual nodes), so one physical server owns many short arcs. A key is hashed onto the circle and stored on the next server clockwise. When a server leaves, its keys move to the next server on the ring. When a server joins, it takes the arc that now points at it. Virtual nodes keep one physical machine from owning a huge arc by luck. This is how shared caches and some databases place keys.</p>
+
+<h2>The shard key is the whole design</h2>
+<p>You can look up by the shard key with one hop. Any other lookup is a scatter: ask every shard, or maintain a second index. TinyLink shards by numeric id, and the code decodes back to the id, so the hot path stays one hop. If the hot path were “all links created this hour,” a hash shard would force a scatter, and you would want a different key or a second store.</p>
+<p>A <strong>hot shard</strong> receives far more than its share. A celebrity’s messages, if you shard messages by user id and everyone writes on that user’s shard, melt one machine. Fixes: split that user’s data further, add a cache, or choose a key with more spread, such as conversation id.</p>
+<p><strong>Resharding</strong> moves rows to a new home. Do it as a copy, then a catch-up of new writes, then a short switch. Dual-write during the move, and check that both sides match before you trust the new home.</p>
+<p>Cross-shard actions, such as a like from a user on shard A on a photo on shard B, do not get a single database transaction. You design them as two local writes plus a repair job, or you route them through a queue.</p>
+
+<h1>11. Queues and delivery promises</h1>
+<p>A queue lets the request path stay short. The server writes “please do this” onto a durable tray and answers the user. Workers pull notes and do the slow job: resize a photo, send mail, add a click, charge a card.</p>
+
+<h2>Promises</h2>
+<table>
+<tr><th>Promise</th><th>Meaning</th><th>Your job</th></tr>
+<tr><td>At most once</td><td>The note is delivered zero or one time. A crash can lose it</td><td>Only for work you can afford to skip</td></tr>
+<tr><td>At least once</td><td>The note is retried until a worker acknowledges it. A crash after the work and before the ack delivers it again</td><td>Make the worker idempotent</td></tr>
+<tr><td>Effectively once</td><td>The combination of a durable tray and an idempotent worker produces one effect</td><td>Store the unique id of the note beside the effect, in the same transaction when you can</td></tr>
+</table>
+<p>Most real systems give at least once. Design every consumer as if the same note will arrive twice. TinyLink’s click worker should add clicks in a way that a repeated note does not double-count, or you accept approximate counts and use at-least-once on purpose because a view counter may be approximate. Say which one you chose.</p>
+
+<h2>Ordering</h2>
+<p>A single queue with one worker preserves order. Several workers finish out of order. A log system such as Kafka restores order inside a <strong>partition</strong>: all messages with the same key, such as a conversation id, stick to one partition and stay ordered there. Different keys run in parallel. Order is per key, not global.</p>
+
+<h2>Parts of a log-shaped queue</h2>
+<ul>
+<li><strong>Topic.</strong> A named stream, such as <code>clicks</code>.</li>
+<li><strong>Partition.</strong> An ordered shard of that stream.</li>
+<li><strong>Offset.</strong> A position in a partition. The consumer records how far it got.</li>
+<li><strong>Consumer group.</strong> A team of workers that split the partitions. Each partition is read by one member of the group at a time.</li>
+<li><strong>Retention.</strong> The log keeps messages for a time or a size, whether or not they were read. New consumers can replay history. A classic task queue deletes on ack and does not replay a week later.</li>
+</ul>
+
+<h2>The outbox</h2>
+<p>A common bug: the database commits “order placed,” then the process crashes before it publishes “order placed” to the queue. The order exists and the mail never sends. The <strong>outbox</strong> writes the business row and an outbox row in the same database transaction. A publisher reads the outbox and publishes. If it crashes, it publishes again. Consumers are idempotent. The business change and the intent to publish commit together.</p>
+
+<h2>Dead letters and poison</h2>
+<p>A <strong>poison message</strong> makes every worker crash. After a few tries, move it to a <strong>dead-letter queue</strong> and alert a human. Retrying forever stops the line behind it. Retries should wait longer each time (backoff) and should add a little randomness (jitter) so a thousand workers do not retry on the same millisecond.</p>
+<p><strong>Backpressure</strong> means the producer slows down when the tray is deep. A queue that grows without limit hides a sick consumer until the disk fills. Cap the depth, or slow the producer, and alarm on age: “the oldest click has been waiting 2 minutes.”</p>
+
+<h1>12. Transactions, local and distributed</h1>
+<p>A <strong>transaction</strong> is a bundle of reads and writes that succeed or fail as one. Transferring money is two balance updates. Doing only one is a bug. Databases give transactions four properties, abbreviated ACID.</p>
+<ul>
+<li><strong>Atomicity.</strong> All of the bundle commits, or none of it does.</li>
+<li><strong>Consistency.</strong> The bundle moves the database from one valid state to another. Constraints and your rules hold.</li>
+<li><strong>Isolation.</strong> Concurrent bundles do not see each other’s half-finished work in the ways the isolation level forbids.</li>
+<li><strong>Durability.</strong> After commit, the result survives a crash. The database writes a log to disk before it says yes.</li>
+</ul>
+
+<h2>Isolation levels</h2>
+<table>
+<tr><th>Level</th><th>What a transaction is protected from</th></tr>
+<tr><td>Read uncommitted</td><td>Almost nothing. You can see another transaction’s uncommitted write (a dirty read)</td></tr>
+<tr><td>Read committed</td><td>Dirty reads. Each statement sees only committed data. Two statements in one transaction can still see different values of the same row</td></tr>
+<tr><td>Repeatable read</td><td>A row you read stays stable for the rest of the transaction. A range can still gain new rows (a phantom) in some databases</td></tr>
+<tr><td>Serializable</td><td>The result matches some one-by-one order of the transactions</td></tr>
+</table>
+<p>Higher isolation costs more locking or more retries. Use the lowest level that keeps the product correct. Seat booking and balances need a high level or an explicit lock. A view counter needs neither.</p>
+<p>Two transactions can deadlock: each holds a lock the other wants. The database aborts one. Your code retries the aborted one. Prevent the common case by locking rows in a consistent order, such as always locking the lower account id first.</p>
+
+<h2>Across services</h2>
+<p>A single SQL transaction stops at one database. Two services with two databases need a different plan.</p>
+<p><strong>Two-phase commit</strong> uses a coordinator. Phase one: every participant prepares and promises it can commit. Phase two: the coordinator tells them all to commit. If the coordinator dies between the phases, participants wait, holding locks. That blocking is why teams avoid two-phase commit across microservices, even though databases use related ideas internally.</p>
+<p>A <strong>saga</strong> is a sequence of local transactions. Each step has a <strong>compensating</strong> action that undoes it if a later step fails. Place order, reserve stock, take payment. If payment fails, release stock and cancel the order. Compensations are forward actions, not time travel: a sent email is compensated by a second email, not by un-sending.</p>
+<ul>
+<li><strong>Orchestration.</strong> One conductor calls the steps in order and runs compensations on failure. Easier to read.</li>
+<li><strong>Choreography.</strong> Each service listens for events and does its step, emitting the next event. Less central coupling, and harder to see the whole story.</li>
+</ul>
+<p>Sagas are atomic in spirit and visible in the middle. Other users can see “stock reserved, payment not taken” for a moment. Design those intermediate states as real product states.</p>
+
+<h1>13. Real-time connections</h1>
+<p>Some products need the server to speak first: a new chat message, a live score, a typing hint.</p>
+<table>
+<tr><th>Technique</th><th>How it works</th><th>Fit</th></tr>
+<tr><td>Short polling</td><td>The client asks “anything new?” on a timer</td><td>Simple. Wasteful when nothing is new. Fine for a rare check</td></tr>
+<tr><td>Long polling</td><td>The client asks, and the server holds the request until something exists or a timeout hits. The client immediately asks again</td><td>Near-real-time without a special protocol</td></tr>
+<tr><td>Server-Sent Events</td><td>One long HTTP response. The server pushes text events down. The client reconnects with “I last saw event 40”</td><td>One-direction updates: feeds, scores, notifications</td></tr>
+<tr><td>WebSocket</td><td>A connection that stays open and carries messages both ways</td><td>Chat, games, collaborative editing</td></tr>
+</table>
+<p>A stayed-open connection is state. The server that holds Priya’s socket is the only one that can push to her. Keep a <strong>connection registry</strong>: user id to gateway machine. When a message is born on any machine, it looks up the gateway and forwards. If Priya is offline, write the message to her inbox and send a phone push. Gateways must be many, and the registry must update on connect and disconnect.</p>
+<p>Heartbeats find dead connections. Without them, a phone that lost its radio still looks online.</p>
+
+<h1>14. Feeds and fanout</h1>
+<p>A feed is “what should this person see, in order?” Two ways to build it.</p>
+<p><strong>Fanout on write.</strong> When Priya posts, the system writes the post id into the prebuilt feed of each follower. Opening the app is a cheap read of your own feed. A user with 10 million followers turns one post into 10 million writes. That user is a celebrity problem.</p>
+<p><strong>Fanout on read.</strong> The post is stored once. Opening the app looks up who you follow and merges their recent posts. Writes stay cheap. Reads get heavier as you follow more people, and the merge is on the hot path.</p>
+<p><strong>Hybrid.</strong> Ordinary accounts fan out on write. Celebrities fan out on read: at read time, merge your prebuilt feed with the latest posts from celebrities you follow. This is the usual answer for a large social product.</p>
+<p>Ranked feeds add a scorer: recency, affinity, and a few content features. Scoring can run on write (store the score) or on read (rescore the candidates). Candidate generation plus ranking is the shape: pick a few hundred possible posts cheaply, then rank those, then take the top twenty. You do not rank the entire history on every open.</p>
+<p>Cursors keep paging stable. Store “the last post id the client rendered” and ask for older ones.</p>
+
+<h1>15. More than one city</h1>
+<p>One data center is one building. A fire, a cut cable, or a bad deploy takes it. Multi-region design is how you keep going.</p>
+<ul>
+<li><strong>Active-passive.</strong> One region serves. Another holds replicas and is ready to take over. Failover takes minutes and may lose the last asynchronous writes. Simpler to reason about.</li>
+<li><strong>Active-active.</strong> Two regions both serve users, usually the users nearest them. Writes in both places can conflict. You need a rule: route a given user’s writes to a home region, or use conflict-free data, or accept last-writer-wins for data where that is harmless.</li>
+</ul>
+<p><strong>Home region</strong> is the clean rule for accounts and payments: Priya’s rows live in one region, and her writes go there even if she travels. Reads of her own data go there too, or to a local replica that is allowed to be slightly behind. Global public data, such as a viral video file, replicates everywhere through the CDN and object storage.</p>
+<p>Latency across an ocean is tens to a couple of hundred milliseconds. A design that does five cross-ocean database calls on one tap will feel broken. Keep the hot path inside one region.</p>
+
+<h1>16. Staying up</h1>
+<p>Failures are ordinary. A design names them.</p>
+<ul>
+<li><strong>Timeout.</strong> Stop waiting. Every remote call has one.</li>
+<li><strong>Retry.</strong> Try again for errors that might vanish: a dropped packet, a 503, a timeout. Do not retry a 400. Retry only idempotent operations, or carry an idempotency key. Use exponential backoff and jitter. Cap the number of tries.</li>
+<li><strong>Circuit breaker.</strong> When a neighbor is failing most calls, stop calling for a short cool-down. A few trial calls check whether it has recovered. This keeps your servers from piling up threads on a sick neighbor.</li>
+<li><strong>Bulkhead.</strong> Separate pools of threads or connections for separate neighbors. A stuck payment call must not consume the threads that serve the homepage.</li>
+<li><strong>Rate limit.</strong> Cap how fast one caller, one IP, or one API key may knock. Algorithms are in chapter 18.</li>
+<li><strong>Load shedding.</strong> When you are overloaded, refuse new work quickly with 503 so the work you did accept can finish. A server that accepts everything and then does it slowly fails everyone.</li>
+<li><strong>Graceful degradation.</strong> If recommendations are down, show the plain feed. The product continues in a smaller form.</li>
+<li><strong>Idempotency keys.</strong> The client sends a unique token. The server stores the token and the response. A retry returns the stored response.</li>
+</ul>
+<p>Define a <strong>service level objective</strong> in plain numbers: “99.9% of opens complete under 100 ms in a month.” An <strong>SLI</strong> is the measurement (the percentage that met the bar). An <strong>SLA</strong> is the promise to a customer, often with a consequence. Design the system to the objective, and alarm when the measurement approaches it.</p>
+
+<h1>17. Security</h1>
+<p>Security in system design is a set of boxes and checks, not a coat of paint at the end.</p>
+<ul>
+<li><strong>TLS.</strong> Encrypts data on the network so a stranger on the path cannot read or alter it. Terminate TLS at the load balancer or at the service, and be deliberate about which hop is encrypted inside the data center too.</li>
+<li><strong>Passwords.</strong> Store a slow hash made for passwords (bcrypt, scrypt, or Argon2) with a unique salt. A hash is one-way. Encryption, which can be reversed with a key, is the wrong tool for passwords. The database never needs the original password again; it only needs to check a new hash against the stored hash.</li>
+<li><strong>Sessions and tokens.</strong> After login, the client holds a token. A random session id stored on the server can be revoked by deleting the row. A <strong>JWT</strong> is a signed bundle of claims (user id, expiry). Anyone can read it. Only the holder of the signing key can mint a valid one. The server checks the signature and the expiry. Revoking a JWT before expiry needs an extra denylist or very short expiry plus a refresh token.</li>
+<li><strong>OAuth.</strong> The user signs in with a specialist (the identity provider). Your app receives a token and never sees the password. Your app still checks authorization itself.</li>
+<li><strong>Authorization on the server.</strong> The client can hide a button. The server still checks “this user owns this link” on every call. Hiding a button is a convenience. The check is the control.</li>
+<li><strong>Least privilege.</strong> The photo service’s database user cannot read the payments tables. A leaked credential then reaches a smaller blast radius.</li>
+<li><strong>Encryption at rest.</strong> Disks and backups are encrypted so a stolen drive is not a stolen database. Keys live in a key service, separate from the data.</li>
+<li><strong>Input rules.</strong> Validate type, length, and allowed characters. Parameterized queries keep user text from becoming SQL. Object keys are generated by you, so a user cannot name a key that overwrites someone else’s file.</li>
+<li><strong>Rate limits on login and create.</strong> They cut password guessing and spam.</li>
+<li><strong>Secrets.</strong> Keys live in a secret store or environment, never in the repository and never in the client application.</li>
+</ul>
+
+<h1>18. Seeing a running system</h1>
+<p>If you cannot see it, you cannot keep the objective.</p>
+<ul>
+<li><strong>Logs.</strong> A line per meaningful event, with a timestamp, a service name, and a <strong>request id</strong> that every hop copies. Structured fields (user id, code, latency) beat a paragraph of prose when you search later.</li>
+<li><strong>Metrics.</strong> Numbers over time. For a request path, watch rate, errors, and duration. For a machine, watch CPU, memory, disk, and saturation of the pool. For a queue, watch depth and age of the oldest message.</li>
+<li><strong>Traces.</strong> One request’s spans across services: 12 ms in the gateway, 4 ms in the cache, 40 ms in the database. Traces answer “where did the time go?” for a single slow tap.</li>
+<li><strong>Alerts</strong> page a human on symptoms that need action: error rate over the objective, queue age over the budget, disk predicted to fill. A chart you look at in the morning is a dashboard. An alert is a page. Page on few things, or people will sleep through them.</li>
+</ul>
+
+<h1>19. One program or many</h1>
+<p>A <strong>monolith</strong> is one deployable program with modules inside it. A <strong>microservice</strong> is a program that owns one business capability and its data, and talks to others over the network.</p>
+<p>Start with one program and clear modules while a small team is learning the product. Split a piece out when it has its own scaling need, its own release clock, or its own strict data boundary. TinyLink’s workers can be a module in the same program. A payments system beside a website is a natural split because the security boundary and the consistency needs differ.</p>
+<p>Each service owns its tables. Another service asks through the API or listens to events. Reaching into another service’s tables couples you to its private shape and breaks the moment that shape changes.</p>
+<p>An <strong>API gateway</strong> is the front door for external clients: TLS, authentication, rate limits, and routing to services. Internal services may talk directly for speed, still with timeouts.</p>
+<p><strong>Service discovery</strong> is how a caller finds a healthy instance. A registry tracks “payment service, these three addresses.” The load balancer or a client library consults it.</p>
+<p><strong>gRPC</strong> is a binary request protocol with a strict contract, often used between services. HTTP JSON is easier for browsers and public APIs. Both are just menus of calls. The design questions in this book do not change when the bytes on the wire change.</p>
+
+<h1>20. Tools you will reach for</h1>
+<h2>Unique ids</h2>
+<ul>
+<li><strong>Database sequence.</strong> Simple, ordered, and a single allocator. Fine at TinyLink’s 40 writes per second.</li>
+<li><strong>Blocks.</strong> Each server leases a range. Fewer round trips. Holes appear when a server dies. Order is roughly increasing.</li>
+<li><strong>Snowflake-style 64-bit ids.</strong> A timestamp, a machine number, and a per-machine counter. Ids are unique and roughly time-ordered without a central allocator. Clocks must stay close enough that you do not mint the same timestamp-and-counter pair; the usual design uses a sequence within the same millisecond so a clock wobble of one millisecond is handled by waiting or by the counter.</li>
+<li><strong>Random UUIDs.</strong> Unique with extremely high probability and no coordination. They scatter in B-tree indexes, which makes inserts more random. Fine as public tokens. Less fine as the only primary key of a huge high-insert table, unless the database is built for random keys.</li>
+</ul>
+<p>Do not use raw auto-increment ids in a public URL if guessing the next id would expose someone else’s data. TinyLink’s codes are public handles on purpose; private resources should use unguessable tokens plus an authorization check.</p>
+
+<h2>Hashing</h2>
+<p>A hash function maps bytes to a fixed-size number. Tiny changes in the input swing the output. Hashes place cache keys, shard keys, and checksums. A cryptographic hash (SHA-256 and its cousins) is what you want when an attacker must not be able to craft a collision. A fast non-cryptographic hash is what you want for a hash table. Password storage uses a slow password hash, which is a different tool from either of those.</p>
+
+<h2>Bloom filters</h2>
+<p>A Bloom filter answers “have I seen this item?” with two results: <strong>definitely no</strong>, or <strong>maybe yes</strong>. It is a row of bits. Inserting an item sets k bit positions chosen by k hashes. Asking an item checks those k bits. If any bit is off, the item was never inserted. If all are on, it was probably inserted, or other items happened to set the same bits.</p>
+<p>Use one in front of a huge store to skip useless lookups: a crawler asks “have we fetched this URL?” and a definite no avoids the database. A maybe-yes still checks the database. You cannot delete an item from the basic filter, because clearing a bit might belong to another item. Size the bit array from the number of items and the false-yes rate you allow.</p>
+
+<h2>Search</h2>
+<p>A database <code>LIKE '%cat%'</code> scan does not survive a large corpus. A <strong>search index</strong> inverts the text. The <strong>inverted index</strong> maps a term to the list of documents that contain it: <code>cat -&gt; doc 4, doc 9, doc 20</code>. A query intersects lists. Ranking then orders the hits using signals such as how rare the term is and where it sits in the document.</p>
+<p>The index is derived. The source of truth stays in your database or object store. An indexer consumes a stream of creates and updates and applies them to the index. Search being a few seconds behind the write is normal and should be stated as a product choice. Tokenization, language, and typos are the hard product edges: decide whether “Cats” matches “cat,” and whether a typo returns neighbors.</p>
+<p><strong>Autocomplete</strong> is a prefix problem. A trie, or a prefix index, maps <code>ca</code> to the ten most common completions. Those top-ten lists can be precomputed from recent query counts so the keystroke path is one cache read. Update the counts asynchronously. Personal suggestions are a second, smaller list merged at read time.</p>
+
+<h2>Rate limit algorithms</h2>
+<table>
+<tr><th>Algorithm</th><th>Behavior</th></tr>
+<tr><td>Fixed window</td><td>A counter per clock minute. Simple. At the boundary, a caller can send the full allowance twice in two seconds, once at 12:00:59 and once at 12:01:00</td></tr>
+<tr><td>Sliding window log</td><td>Store each timestamp and count those inside the last minute. Accurate. Uses more memory</td></tr>
+<tr><td>Sliding window counter</td><td>Keep the previous window’s count and the current one. Estimate the last minute as a weighted mix. Small memory, small error</td></tr>
+<tr><td>Token bucket</td><td>Tokens drip in at a steady rate, up to a bucket size. Each request takes a token. The bucket size is the allowed burst. Empty bucket means refuse</td></tr>
+<tr><td>Leaky bucket</td><td>Requests join a queue that drains at a fixed rate. Bursts are smoothed. Excess spills (is refused) when the queue is full</td></tr>
+</table>
+<p>Store the counters in a shared cache so every application server enforces the same limit. The key is the caller identity plus the route. Return 429 and a hint about when to retry.</p>

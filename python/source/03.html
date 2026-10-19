@@ -1,0 +1,226 @@
+<h1>18. The standard library you actually use</h1>
+<p>Learn these modules by the job they do. The full library is larger. This is the set you should be able to reach for without searching.</p>
+<table>
+<tr><th>Job</th><th>Tool</th></tr>
+<tr><td>Paths and small file reads</td><td><code>pathlib.Path</code></td></tr>
+<tr><td>JSON text</td><td><code>json</code></td></tr>
+<tr><td>CSV tables</td><td><code>csv</code></td></tr>
+<tr><td>Dates and times</td><td><code>datetime</code>, with timezone-aware values</td></tr>
+<tr><td>Counts, default dicts, double-ended queues, named tuples</td><td><code>collections</code></td></tr>
+<tr><td>Memoize, partial application, reduce, wraps</td><td><code>functools</code></td></tr>
+<tr><td>Iterator helpers</td><td><code>itertools</code></td></tr>
+<tr><td>Patterns in text</td><td><code>re</code></td></tr>
+<tr><td>Logs</td><td><code>logging</code></td></tr>
+<tr><td>Command-line flags</td><td><code>argparse</code></td></tr>
+<tr><td>Fixed constants</td><td><code>enum</code></td></tr>
+<tr><td>Shallow and deep copies</td><td><code>copy</code></td></tr>
+<tr><td>Math on numbers</td><td><code>math</code></td></tr>
+<tr><td>Simulations and shuffles</td><td><code>random</code></td></tr>
+<tr><td>Tokens, passwords, secrets</td><td><code>secrets</code></td></tr>
+<tr><td>Environment variables</td><td><code>os.environ</code></td></tr>
+<tr><td>Running a process</td><td><code>subprocess</code></td></tr>
+<tr><td>Exact decimals</td><td><code>decimal</code></td></tr>
+<tr><td>In-memory text files for tests</td><td><code>io.StringIO</code></td></tr>
+</table>
+
+<h2>datetime</h2>
+<p>A <strong>naive</strong> datetime has no timezone. An <strong>aware</strong> datetime has one. Mix them and Python raises, which is the right failure. Store instants as aware UTC. Convert to a local zone only for display.</p>
+<pre>from datetime import datetime, timezone
+now = datetime.now(timezone.utc)
+stamp = now.isoformat()</pre>
+<p><code>date</code> is a calendar day. <code>timedelta</code> is a duration. Subtracting two datetimes returns a timedelta.</p>
+
+<h2>collections</h2>
+<pre>from collections import Counter, defaultdict, deque
+
+counts = Counter(["a", "b", "a"])
+counts.most_common(1)
+
+groups = defaultdict(list)
+groups["priya"].append(1)
+
+line = deque()
+line.append(1)
+line.appendleft(0)
+line.pop()</pre>
+
+<h2>re</h2>
+<p>A regular expression is a tiny language for text shapes. <code>re.search</code> finds a match anywhere. <code>re.fullmatch</code> requires the whole string to match. <code>re.findall</code> returns the matched pieces. Compile a pattern you reuse. Prefer string methods when the job is a fixed prefix, suffix, or split. Reach for <code>re</code> when the shape varies: an email-like token, a repeated number, optional pieces.</p>
+<pre>import re
+match = re.fullmatch(r"[A-Z]{2}\d{2}", "KA01")
+code = match.group(0) if match else None</pre>
+
+<h2>logging</h2>
+<p>Levels, from quieter to louder: DEBUG, INFO, WARNING, ERROR, CRITICAL. Configure once at program start. Get a logger per module with <code>logging.getLogger(__name__)</code>. Log an event with fields, not a paragraph you will regret parsing.</p>
+<pre>import logging
+log = logging.getLogger(__name__)
+log.info("opened code=%s", code)</pre>
+<p>The <code>%s</code> style lets the logger skip the formatting work when the level is disabled. Pass exceptions with <code>log.exception("save failed")</code> inside an <code>except</code> block so the traceback is recorded.</p>
+
+<h2>argparse and subprocess</h2>
+<pre>import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument("path")
+parser.add_argument("--limit", type=int, default=10)
+args = parser.parse_args()</pre>
+<p><code>subprocess.run(["python", "tool.py"], check=True)</code> runs a program and raises if it exits with an error. Pass arguments as a list. A single string with <code>shell=True</code> hands that string to a shell, which is how untrusted text becomes a command. Keep <code>shell=False</code> unless you have a specific reason and a trusted command.</p>
+
+<h2>random and secrets</h2>
+<p><code>random</code> is for games, samples, and tests. It is not for passwords or tokens. <code>secrets.token_urlsafe(16)</code> and <code>secrets.choice</code> draw from the operating system’s cryptographic source. Seeds exist so a simulation can be repeated: <code>random.seed(0)</code>.</p>
+
+<h1>19. Concurrency</h1>
+<p>Concurrency means the program has more than one thing in progress. It does not always mean more than one CPU core is running your Python at the same instant.</p>
+
+<h2>The GIL</h2>
+<p>CPython, the usual interpreter, has a global interpreter lock. One thread at a time runs Python bytecode. Threads still help when the work waits on the network, a disk, or a database, because those waits release the lock and another thread can run. Threads do not speed up a tight loop of pure Python arithmetic. For that, use separate processes, or a library that does the heavy work in native code and releases the lock.</p>
+
+<h2>Threads</h2>
+<p>A <code>Thread</code> runs a function beside the caller. Share objects only with a plan. A lock (<code>threading.Lock</code>) lets one thread into a block at a time. Acquire locks in a fixed order so two threads cannot each hold the lock the other wants. Prefer handing each thread its own data and collecting results through a <code>queue.Queue</code>.</p>
+<pre>from threading import Thread
+
+def work(name, out):
+    out.append(name.upper())
+
+box = []
+thread = Thread(target=work, args=("priya", box))
+thread.start()
+thread.join()</pre>
+<p>The list append here is one bytecode operation and is safe in CPython. A read-modify-write such as <code>n = n + 1</code> on a shared <code>n</code> is not safe. Use a lock or a <code>queue</code>.</p>
+
+<h2>Processes</h2>
+<p><code>multiprocessing</code> and <code>concurrent.futures.ProcessPoolExecutor</code> run functions in other interpreters, each with its own GIL. Arguments and return values are pickled, which means copied across a boundary. Processes pay startup cost and cannot share an ordinary list. Use them for CPU-heavy work that splits into independent chunks.</p>
+<pre>from concurrent.futures import ProcessPoolExecutor
+
+def square(n):
+    return n * n
+
+if __name__ == "__main__":
+    with ProcessPoolExecutor() as pool:
+        print(list(pool.map(square, [1, 2, 3])))</pre>
+<p>The <code>__main__</code> guard is required on Windows. The child process imports the module, and without the guard it would spawn more children forever.</p>
+
+<h2>asyncio</h2>
+<p><code>async</code> and <code>await</code> are cooperative concurrency on one thread. A task runs until it awaits something, usually I/O. The event loop then runs another task. Nothing preempts you. A CPU loop or a blocking <code>time.sleep</code> inside an async function freezes every task. Use <code>asyncio.sleep</code>, async libraries, and <code>asyncio.to_thread</code> for a blocking call you cannot avoid.</p>
+<pre>import asyncio
+
+async def fetch(name):
+    await asyncio.sleep(0.1)
+    return name.upper()
+
+async def main():
+    results = await asyncio.gather(fetch("a"), fetch("b"))
+    return results
+
+asyncio.run(main())</pre>
+<p><code>gather</code> starts the tasks together and waits for all of them. One event loop per thread is the rule. <code>asyncio.run</code> creates the loop, runs the coroutine, and closes the loop.</p>
+<p>Choose by the bottleneck. Waiting on many sockets: asyncio or threads. Burning CPU in Python: processes. A single straightforward script: neither.</p>
+
+<h1>20. Tests, debugging, and style</h1>
+<h2>Tests</h2>
+<p>A test calls a function with a fixed input and checks the output. <code>pytest</code> is the tool most projects use. A test is a function whose name starts with <code>test_</code>, and a failing <code>assert</code> is a failing test.</p>
+<pre>def clamp(n, low, high):
+    return max(low, min(high, n))
+
+def test_clamp_low():
+    assert clamp(-1, 0, 10) == 0
+
+def test_clamp_inside():
+    assert clamp(4, 0, 10) == 4</pre>
+<p>Run <code>python -m pytest</code>. Test the edges: empty input, one item, the boundary value, the error case. For exceptions:</p>
+<pre>import pytest
+
+def test_rejects_blank():
+    with pytest.raises(ValueError):
+        parse(" ")</pre>
+<p>The standard library’s <code>unittest</code> does the same job with classes and <code>self.assertEqual</code>. Knowing either is enough. Mock only the edges you do not own: the clock, the network, a random source. A test that mocks the function it claims to test proves nothing.</p>
+<p>Give tests a fake clock and a fake repository, the same idea as the system-design book. Pass them in. Do not make the function reach for a hidden global that the test cannot replace.</p>
+
+<h2>Debugging</h2>
+<p>Read the traceback first. Then print the value you did not expect, or drop into the debugger with <code>breakpoint()</code>. From there, <code>n</code> steps to the next line, <code>s</code> steps into a call, <code>c</code> continues, <code>p expr</code> prints an expression. <code>repr(value)</code> shows a value more honestly than <code>print</code> when spaces and types matter.</p>
+<p>Bisect a mystery: comment half the path, or return early, until the surprise disappears. The last piece you removed is where to look.</p>
+
+<h2>Style</h2>
+<p>PEP 8 is the community style. The parts that matter daily:</p>
+<ul>
+<li>Four spaces per indent. Lines around 88 or 99 characters, not a hard religion.</li>
+<li>Functions and variables in <code>snake_case</code>. Classes in <code>CapWords</code>. Constants in <code>UPPER_SNAKE</code>.</li>
+<li>Two blank lines between top-level functions and classes.</li>
+<li>Imports in three groups: standard library, third party, your package. One import per line for modules. Avoid <code>from module import *</code>.</li>
+<li>Names that say what the value is. <code>elapsed_seconds</code> beats <code>t</code> once a function is longer than a few lines.</li>
+<li>A function does one job. If you describe it with “and,” consider splitting it.</li>
+<li>Raise specific exceptions. Return <code>None</code> only when absence is a normal answer, and hint <code>| None</code>.</li>
+</ul>
+<p>Formatters such as <code>ruff format</code> or <code>black</code> end arguments about whitespace. Linters such as <code>ruff</code> catch unused names, shadowing, and mutable defaults. Run them. They are part of knowing the language in a team.</p>
+
+<h1>21. Pitfalls</h1>
+<p>These are the mistakes that happen after the syntax is familiar.</p>
+<ul>
+<li><strong>Shared mutable default.</strong> <code>def f(items=[])</code> uses one list forever. Use <code>None</code> and create the list inside.</li>
+<li><strong>Alias versus copy.</strong> <code>b = a</code> shares a mutable object. Copy when you mean a separate value.</li>
+<li><strong>Late closure.</strong> Lambdas in a loop share the loop variable. Bind it with a default argument.</li>
+<li><strong><code>is</code> for values.</strong> Use <code>is</code> for <code>None</code>. Use <code>==</code> for everything you mean as a value. Small integers may share objects by accident. Do not depend on that.</li>
+<li><strong>Float money.</strong> Use <code>Decimal</code>.</li>
+<li><strong>Mutable dict keys.</strong> Only hashables. Do not change an object that is already in a set.</li>
+<li><strong>Modifying a list while looping over it.</strong> Iterate over a copy, or build a new list.</li>
+<li><strong>Except that is too wide,</strong> then a bug disappears into the handler. Catch the type you expect.</li>
+<li><strong>Bare open without <code>with</code></strong> and without an encoding.</li>
+<li><strong>Naive and aware datetimes</strong> mixed in one expression.</li>
+<li><strong>Shadowing a builtin.</strong> Naming a variable <code>list</code> or <code>id</code> hides the builtin in that scope.</li>
+<li><strong>A module named like the standard library,</strong> such as <code>random.py</code> in your folder.</li>
+<li><strong>Forgetting the main guard</strong> before using <code>multiprocessing</code> on Windows.</li>
+<li><strong>Blocking inside <code>async def</code>.</strong> The whole loop waits with you.</li>
+<li><strong>Caching a function that is not pure.</strong></li>
+<li><strong>Comparing floats with <code>==</code></strong> after arithmetic. Compare with a tolerance, or use decimals.</li>
+<li><strong>Assuming dict order did not exist.</strong> It does, since 3.7. Still do not use a dict as a priority queue. Use a heap (<code>heapq</code>) when you always need the smallest item.</li>
+</ul>
+<pre>import heapq
+heap = []
+heapq.heappush(heap, (2, "b"))
+heapq.heappush(heap, (1, "a"))
+first = heapq.heappop(heap)   # (1, "a")</pre>
+
+<h1>22. Glossary and a study plan</h1>
+<table>
+<tr><th>Term</th><th>Meaning</th></tr>
+<tr><td>Object</td><td>A value with a type and an identity</td></tr>
+<tr><td>Name</td><td>A label pointing at an object. Assignment moves the label</td></tr>
+<tr><td>Immutable</td><td>The object’s value cannot change. int, str, tuple</td></tr>
+<tr><td>Mutable</td><td>The object can change in place. list, dict, set, most instances</td></tr>
+<tr><td>Identity</td><td>Whether two names are the same object. Test with <code>is</code></td></tr>
+<tr><td>Iterable</td><td>Something a <code>for</code> loop can walk</td></tr>
+<tr><td>Iterator</td><td>The walker. Produces the next item or stops</td></tr>
+<tr><td>Generator</td><td>A function that yields items and pauses between them</td></tr>
+<tr><td>Scope</td><td>The region where a name is visible. LEGB</td></tr>
+<tr><td>Closure</td><td>A function that keeps using variables from where it was created</td></tr>
+<tr><td>Exception</td><td>An object raised to report that a statement could not finish</td></tr>
+<tr><td>Instance</td><td>One object built from a class</td></tr>
+<tr><td>Method</td><td>A function defined on a class, receiving the instance as <code>self</code></td></tr>
+<tr><td>MRO</td><td>The order parent classes are searched</td></tr>
+<tr><td>Decorator</td><td>A function that wraps another function</td></tr>
+<tr><td>Context manager</td><td>An object that <code>with</code> uses to set up and clean up</td></tr>
+<tr><td>Module</td><td>One <code>.py</code> file that can be imported</td></tr>
+<tr><td>Package</td><td>A folder of modules</td></tr>
+<tr><td>Hint</td><td>A note about types, checked by a type checker, not by Python itself</td></tr>
+<tr><td>GIL</td><td>The lock that lets one thread run Python bytecode at a time</td></tr>
+<tr><td>Awaitable</td><td>An object you can <code>await</code>, usually a coroutine</td></tr>
+<tr><td>Hashable</td><td>An object that can be a dict key or a set member. It needs a stable hash</td></tr>
+</table>
+
+<h2>What “I know Python” means</h2>
+<p>You can write a small program that reads a file, computes with dicts and lists, defines a function and a class, handles a bad input with an exception, and tests the function. You can explain why two names saw the same list change. You can say when you want a thread, a process, or <code>async</code>. You can read a traceback. That is the language. Libraries for the web, data, or machine learning sit on top of this map. They are vocabularies of functions. They are not a second language.</p>
+
+<h2>Ten sessions</h2>
+<ol>
+<li>Names, mutability, <code>is</code> and <code>==</code>. Draw boxes and arrows for three tiny programs.</li>
+<li>Strings, f-strings, slices, and a file read with <code>pathlib</code>.</li>
+<li>Lists, dicts, sets, comprehensions. Solve “count the words in a file.”</li>
+<li>Functions, defaults, <code>*args</code>, scope, and the closure trap.</li>
+<li>Exceptions. Turn the word count into a function that raises on a missing file and returns a <code>Counter</code>.</li>
+<li>Classes, dataclass, property, inheritance. Model a ticket with <code>close</code>.</li>
+<li>Generators and <code>with</code>. Stream the word count so the whole file is not one string if you can avoid it. Line by line already does this.</li>
+<li>A decorator that times a function, using <code>wraps</code>. Add <code>lru_cache</code> to a pure function and show a second call is instant.</li>
+<li>Type hints on the word counter. Run a type checker if one is installed.</li>
+<li>One test file with pytest. One threaded or async example that waits, and one sentence on why a CPU loop would not speed up under threads.</li>
+</ol>
+<p>After those ten, pick a project you care about and keep this PDF closed until a concept fails you. Then open that chapter only. The concepts are the ones in the contents. Knowing them is predicting the next line, not recognizing the heading.</p>
+<p class="end">End of the offline Python guide.</p>

@@ -1,0 +1,260 @@
+<h1 class="cover">Python from Zero</h1>
+<p class="subtitle">The concepts you should know. An offline guide.</p>
+<p>This book is the concept map of Python. It assumes you can read a sentence and you have not memorized the language. Every idea is defined when it appears. The examples are Python 3.10 or newer. On this machine the installed interpreter is Python 3.14, which runs all of them.</p>
+<p>Run a file with <code>python file.py</code>. Try a line in the prompt with <code>python</code>, then type <code>exit()</code> to leave. A concept is yours when you can predict the output before you run it.</p>
+
+<h2>Contents</h2>
+<ol class="toc">
+<li>Programs, indentation, and comments</li>
+<li>Objects, names, and mutability</li>
+<li>None, Booleans, and numbers</li>
+<li>Text and bytes</li>
+<li>Operators and truth</li>
+<li>Choices and loops</li>
+<li>Functions and scope</li>
+<li>Lists, tuples, dicts, and sets</li>
+<li>Comprehensions and unpacking</li>
+<li>Files and paths</li>
+<li>Errors</li>
+<li>Classes</li>
+<li>The data model</li>
+<li>Iterators, generators, and with</li>
+<li>Decorators</li>
+<li>Modules, packages, and installs</li>
+<li>Type hints</li>
+<li>The standard library you actually use</li>
+<li>Concurrency</li>
+<li>Tests, debugging, and style</li>
+<li>Pitfalls</li>
+<li>Glossary and a study plan</li>
+<li>Interview questions</li>
+</ol>
+
+<h1>1. Programs, indentation, and comments</h1>
+<p>A Python program is a text file of statements. The interpreter reads the file from top to bottom and runs each statement. Indentation is syntax. A block is the lines indented further than the line that opened them. Use four spaces. Do not mix tabs and spaces.</p>
+<pre>def greet(name):
+    if name:
+        print("Hello", name)
+    else:
+        print("Hello")</pre>
+<p>A comment starts with <code>#</code> and runs to the end of the line. The interpreter skips it. A docstring is a string sitting as the first statement of a module, function, or class. Tools and <code>help()</code> read it. Use a docstring to say what the function promises, not to narrate each line.</p>
+<pre>def area(width, height):
+    """Return the area of a rectangle. width and height are numbers."""
+    return width * height</pre>
+<p><code>print</code> writes a line of text. It is how you look at a value while learning. In a real program, lasting messages go through the <code>logging</code> module, covered later.</p>
+
+<h1>2. Objects, names, and mutability</h1>
+<p>Everything in Python is an <strong>object</strong>: a thing with a type, an identity, and a value. The number <code>3</code>, the text <code>"hi"</code>, a list, and a function are all objects.</p>
+<p>A <strong>name</strong> is a label stuck on an object. Assignment sticks the label on.</p>
+<pre>count = 1
+count = count + 1</pre>
+<p>The second line builds a new integer and moves the label <code>count</code> onto it. It does not change the object <code>1</code>. Integers cannot change. They are <strong>immutable</strong>.</p>
+<p>A list can change. It is <strong>mutable</strong>.</p>
+<pre>nums = [1, 2]
+also = nums
+also.append(3)
+# nums and also are the same list: [1, 2, 3]</pre>
+<p><code>also = nums</code> does not copy the list. Both names point at one object. <code>append</code> changes that object, so both names see the change. This is the fact behind most “why did my other variable change?” bugs.</p>
+<p><code>==</code> asks whether two values compare equal. <code>is</code> asks whether two names point at the exact same object. Use <code>is</code> for <code>None</code> and for this identity question. Use <code>==</code> for values.</p>
+<pre>a = [1, 2]
+b = [1, 2]
+a == b      # True, same contents
+a is b      # False, two lists</pre>
+<p>A <strong>shallow copy</strong> makes a new outer container and keeps the same inner objects. A <strong>deep copy</strong> copies the inners too. <code>list(old)</code>, <code>old[:]</code>, and <code>copy.copy</code> are shallow. <code>copy.deepcopy</code> walks the whole structure.</p>
+<pre>import copy
+grid = [[1], [2]]
+shallow = copy.copy(grid)
+shallow[0].append(9)
+# grid is now [[1, 9], [2]] because the inner list was shared
+deep = copy.deepcopy(grid)
+deep[0].append(8)
+# grid is unchanged by this append</pre>
+
+<h1>3. None, Booleans, and numbers</h1>
+<p><code>None</code> is the single object that means “no value.” There is only one of it. Test with <code>result is None</code>.</p>
+<p>Booleans are <code>True</code> and <code>False</code>. They are the two values of type <code>bool</code>.</p>
+<p>Integers (<code>int</code>) have no fixed size. <code>2 ** 1000</code> is a real integer, not an overflow. Floats (<code>float</code>) are binary fractions with a limited number of bits. <code>0.1 + 0.2</code> is not exactly <code>0.3</code>. For money and other exact decimals, use <code>decimal.Decimal</code>, not <code>float</code>.</p>
+<pre>from decimal import Decimal
+price = Decimal("19.99")
+tax = Decimal("0.08")
+total = price * (1 + tax)</pre>
+<p>Write the decimal as a string. <code>Decimal(0.1)</code> starts from the already-inexact float.</p>
+<p>Division with <code>/</code> always returns a float. <code>//</code> is floor division, toward negative infinity. <code>%</code> is the remainder. <code>divmod(a, b)</code> returns both. <code>**</code> is power.</p>
+<p><code>round</code> uses banker’s rounding on ties: <code>round(2.5)</code> is <code>2</code> and <code>round(3.5)</code> is <code>4</code>, rounding to the even integer. Do not use it as a money policy. Quantize a <code>Decimal</code> instead.</p>
+
+<h1>4. Text and bytes</h1>
+<p>A <code>str</code> is Unicode text. A <code>bytes</code> object is raw octets. Text becomes bytes through an encoding, usually UTF-8.</p>
+<pre>text = "café"
+raw = text.encode("utf-8")   # bytes
+back = raw.decode("utf-8")    # str</pre>
+<p>Strings are immutable. Methods such as <code>upper</code> and <code>replace</code> return a new string. Useful tests: <code>startswith</code>, <code>endswith</code>, <code>isdigit</code>, <code>strip</code>. <code>split</code> breaks a string into a list. <code>join</code> builds a string from pieces and is the right way to combine many fragments.</p>
+<pre>words = ["system", "design"]
+line = " ".join(words)        # "system design"</pre>
+<p>Indexing starts at 0. A negative index counts from the end. <code>s[-1]</code> is the last character. A slice <code>s[start:stop]</code> includes <code>start</code> and excludes <code>stop</code>. <code>s[::2]</code> takes every second character. Slicing a string returns a new string.</p>
+<p>Formatting: an f-string evaluates expressions inside braces.</p>
+<pre>name = "Priya"
+score = 9
+label = f"{name} scored {score}"</pre>
+<p>Put a format spec after a colon: <code>f"{price:.2f}"</code>. For a value that might contain braces or comes from a template file, <code>template.format(name=name)</code> is the other tool. Do not build SQL or HTML by gluing raw user text into a string.</p>
+<p>A raw string, <code>r"\n"</code>, treats backslashes as ordinary characters. Regular expressions want raw strings so <code>\d</code> stays <code>\d</code>.</p>
+
+<h1>5. Operators and truth</h1>
+<p>Comparisons chain: <code>0 &lt;= n &lt; 10</code> means <code>0 &lt;= n and n &lt; 10</code>, and <code>n</code> is evaluated once.</p>
+<p><code>and</code>, <code>or</code>, and <code>not</code> combine conditions. <code>and</code> and <code>or</code> return one of their operands, not always a Boolean.</p>
+<pre>name = "" or "guest"     # "guest"
+found = items and items[0]</pre>
+<p>Many values count as false in an <code>if</code>: <code>None</code>, <code>False</code>, <code>0</code>, <code>0.0</code>, empty text, empty bytes, and empty containers. Everything else counts as true. If you mean “is this missing,” write <code>value is None</code>. An empty list is false and is not <code>None</code>.</p>
+<p>Membership is <code>in</code>. For a dict, <code>in</code> tests keys. For a string, it tests a substring. For a set or dict, the test is fast. For a list, the test walks the list.</p>
+<p>The walrus operator <code>:=</code> assigns inside an expression.</p>
+<pre>if (line := input()) != "quit":
+    print(line)</pre>
+<p>Use it when a name would otherwise be assigned on the line above only so the next line can test it.</p>
+
+<h1>6. Choices and loops</h1>
+<pre>if score &gt;= 90:
+    grade = "A"
+elif score &gt;= 80:
+    grade = "B"
+else:
+    grade = "C"</pre>
+<p><code>if</code> runs its block when the condition is true. <code>elif</code> is another condition, tried only if the earlier ones were false. <code>else</code> runs when none matched. One of these blocks runs.</p>
+<p><code>match</code> compares a value against patterns. It fits when one value has several shapes.</p>
+<pre>def describe(value):
+    match value:
+        case 0:
+            return "zero"
+        case [x, y]:
+            return f"pair {x}, {y}"
+        case {"code": code}:
+            return f"code {code}"
+        case _:
+            return "other"</pre>
+<p>A <code>for</code> loop asks an iterable for items, one at a time.</p>
+<pre>for item in ["a", "b"]:
+    print(item)</pre>
+<p><code>range(stop)</code> yields integers from 0 up to but not including <code>stop</code>. <code>range(start, stop, step)</code> is the full form. <code>range</code> does not build a giant list.</p>
+<p><code>while</code> repeats as long as a condition stays true. If the condition never becomes false, the loop never ends. That is an infinite loop. Put a change inside the body that moves toward the end.</p>
+<p><code>break</code> leaves the loop now. <code>continue</code> skips the rest of this round and starts the next. A loop may have an <code>else</code>. That <code>else</code> runs when the loop finished without <code>break</code>. It is useful for search: “we walked the whole list and did not find it.”</p>
+<pre>for user in users:
+    if user.name == "Priya":
+        break
+else:
+    user = None</pre>
+
+<h1>7. Functions and scope</h1>
+<p>A function packages steps under a name. <code>return</code> sends a value back and ends the function. A function with no <code>return</code> returns <code>None</code>.</p>
+<pre>def clamp(n, low, high):
+    if n &lt; low:
+        return low
+    if n &gt; high:
+        return high
+    return n</pre>
+<p>Parameters can have defaults. The default is computed once, when the function is defined, not on each call. A mutable default is shared by every caller that omits the argument. That is a classic bug.</p>
+<pre>def add_item(item, bucket=None):
+    if bucket is None:
+        bucket = []
+    bucket.append(item)
+    return bucket</pre>
+<p>Arguments can be passed by position or by name. A <code>/</code> in the parameter list means “everything before me is positional only.” A <code>*</code> means “everything after me is keyword only.”</p>
+<pre>def build(name, /, size, *, bold=False):
+    return name, size, bold
+
+build("title", 12, bold=True)</pre>
+<p><code>*args</code> collects extra positional arguments into a tuple. <code>**kwargs</code> collects extra keyword arguments into a dict.</p>
+<pre>def show(*args, **kwargs):
+    return args, kwargs
+
+show(1, 2, color="blue")   # ((1, 2), {"color": "blue"})</pre>
+<p>A <code>lambda</code> is a function written as one expression. Use it as a tiny key or callback. If the body needs statements, write a <code>def</code>.</p>
+<pre>names = ["priya", "Anu", "ben"]
+ordered = sorted(names, key=lambda s: s.lower())</pre>
+
+<h2>Scope</h2>
+<p>A name is looked up in the LEGB order: <strong>L</strong>ocal to the function, then <strong>E</strong>nclosing functions, then the module <strong>G</strong>lobal, then <strong>B</strong>uiltins such as <code>len</code> and <code>print</code>.</p>
+<p>Assignment inside a function makes that name local to the whole function. To assign to a module name, declare <code>global</code>. To assign to a name in an enclosing function, declare <code>nonlocal</code>. Reading a global needs no declaration.</p>
+<p>A closure is a function that remembers variables from the function that built it.</p>
+<pre>def make_adder(n):
+    def add(x):
+        return x + n
+    return add
+
+add5 = make_adder(5)
+add5(2)     # 7</pre>
+<p>The loop-closure trap: every lambda in this list sees the same <code>i</code>, which is <code>2</code> after the loop.</p>
+<pre>funcs = []
+for i in range(3):
+    funcs.append(lambda: i)
+# each funcs[k]() returns 2
+
+funcs = []
+for i in range(3):
+    funcs.append(lambda i=i: i)
+# default binds the current i: 0, 1, 2</pre>
+
+<h1>8. Lists, tuples, dicts, and sets</h1>
+<p>A <strong>list</strong> is an ordered, mutable sequence. Indexing is fast. Appending at the end is fast on average. Inserting at the front is slow, because every later item moves. Searching with <code>in</code> walks the list.</p>
+<pre>nums = [3, 1, 2]
+nums.append(4)
+nums.sort()
+last = nums.pop()</pre>
+<p><code>sort</code> changes the list. <code>sorted(nums)</code> returns a new list and leaves the original. Both take <code>key</code> and <code>reverse</code>.</p>
+<p>A <strong>tuple</strong> is an ordered, immutable sequence. Use it for a fixed record, such as a point <code>(x, y)</code>, and as a dict key when every item inside is hashable. Immutable means you cannot rebind a slot. If a slot holds a list, that list can still change.</p>
+<p>A <strong>dict</strong> maps keys to values. Keys must be hashable: immutable values such as strings, numbers, and tuples of hashables. Lists cannot be keys. Lookup, insert, and delete are fast on average. Since Python 3.7, dicts keep insertion order.</p>
+<pre>user = {"name": "Priya", "score": 9}
+user["city"] = "Pune"
+score = user.get("score", 0)
+name = user.pop("name")</pre>
+<p><code>user["missing"]</code> raises <code>KeyError</code>. <code>user.get("missing")</code> returns <code>None</code> or a default you pass. Iterate keys with <code>for key in user</code>, pairs with <code>user.items()</code>.</p>
+<p>A <strong>set</strong> holds unique hashable items and does not keep a useful order for your logic. It gives fast membership and the operations <code>|</code> union, <code>&amp;</code> intersection, and <code>-</code> difference.</p>
+<pre>seen = set()
+seen.add("a")
+"a" in seen</pre>
+<p>A <code>frozenset</code> is an immutable set and can be a dict key.</p>
+
+<h2>What to pick</h2>
+<table>
+<tr><th>You need</th><th>Use</th></tr>
+<tr><td>An ordered row you will edit</td><td>list</td></tr>
+<tr><td>A fixed group of fields</td><td>tuple, or a dataclass once you have classes</td></tr>
+<tr><td>Lookup by a key</td><td>dict</td></tr>
+<tr><td>Unique items and fast membership</td><td>set</td></tr>
+<tr><td>A line at both ends</td><td><code>collections.deque</code></td></tr>
+<tr><td>A count of each item</td><td><code>collections.Counter</code></td></tr>
+<tr><td>A dict that fills a missing key</td><td><code>collections.defaultdict</code></td></tr>
+</table>
+
+<h1>9. Comprehensions and unpacking</h1>
+<p>A comprehension builds a list, set, or dict from a loop written as an expression. It is the ordinary way to transform a sequence.</p>
+<pre>squares = [n * n for n in range(5)]
+evens = [n for n in range(10) if n % 2 == 0]
+index = {name: i for i, name in enumerate(names)}
+unique_sizes = {len(word) for word in words}</pre>
+<p><code>enumerate</code> pairs each item with its index. <code>zip</code> walks several sequences together and stops at the shortest.</p>
+<pre>for i, name in enumerate(["a", "b"]):
+    print(i, name)
+pairs = list(zip([1, 2], ["a", "b"]))</pre>
+<p>Unpacking assigns several names at once.</p>
+<pre>x, y = (1, 2)
+first, *rest = [1, 2, 3, 4]
+a, b = b, a</pre>
+<p>The last line swaps without a temporary variable. <code>*rest</code> collects whatever remains into a list. You can unpack into a call: <code>print(*nums)</code> passes each item as its own argument, and <code>f(**options)</code> passes a dict as keyword arguments.</p>
+
+<h1>10. Files and paths</h1>
+<p>Use <code>pathlib.Path</code> for file names. It joins pieces with <code>/</code> in code, on every operating system.</p>
+<pre>from pathlib import Path
+folder = Path("notes")
+folder.mkdir(exist_ok=True)
+path = folder / "today.txt"
+path.write_text("hello\n", encoding="utf-8")
+text = path.read_text(encoding="utf-8")</pre>
+<p><code>open</code> is the lower-level tool. Always pass <code>encoding</code> for text. A <code>with</code> block closes the file even if an error happens.</p>
+<pre>with open(path, encoding="utf-8") as handle:
+    for line in handle:
+        print(line.rstrip("\n"))</pre>
+<p>Modes: <code>"r"</code> read text, <code>"w"</code> write text and truncate, <code>"a"</code> append, <code>"rb"</code> and <code>"wb"</code> for bytes. <code>"w"</code> destroys existing contents when the file opens. Read bytes when the file is an image, a zip, or anything that is not text.</p>
+<p>JSON is the usual text format for structured data.</p>
+<pre>import json
+payload = json.dumps({"ok": True})
+data = json.loads(payload)
+path.write_text(json.dumps(data), encoding="utf-8")</pre>
+<p><code>json</code> understands dicts, lists, strings, numbers, Booleans, and <code>None</code>. It does not understand a custom class unless you convert that class to those types first.</p>

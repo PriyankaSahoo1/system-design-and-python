@@ -1,0 +1,208 @@
+<h1>11. Errors</h1>
+<p>An exception is how Python reports that a statement could not finish. The traceback shows the call stack, newest call last. Read it from the bottom: the exception type, the message, and the line that raised it. Then walk upward to see who called that line.</p>
+<pre>try:
+    value = int(text)
+except ValueError:
+    value = None
+else:
+    print("parsed", value)
+finally:
+    print("done")</pre>
+<p><code>except</code> runs when that exception type is raised. <code>else</code> runs when the <code>try</code> body did not raise. <code>finally</code> runs either way, including after <code>return</code>. Use <code>finally</code> or, better, <code>with</code>, to release a resource.</p>
+<p>Catch the narrowest type that you can handle. A bare <code>except:</code> also catches <code>KeyboardInterrupt</code> and <code>SystemExit</code>, which inherit from <code>BaseException</code> rather than <code>Exception</code>. Catch <code>Exception</code> only at a boundary where you log and continue or exit cleanly.</p>
+<p>Raise with <code>raise ValueError("amount must be positive")</code>. Chain causes with <code>raise RuntimeError("could not save") from error</code> so the original traceback stays attached. <code>raise</code> with nothing, inside an <code>except</code>, re-raises the current exception.</p>
+<p>Define your own type when callers should be able to catch that case on purpose.</p>
+<pre>class Full(Exception):
+    pass
+
+def park():
+    raise Full("no spots")</pre>
+<p>Python style prefers EAFP, “easier to ask forgiveness than permission”: try the operation and handle the exception. The other style, LBYL, checks first (“look before you leap”). A check-then-act pair can still fail if the world changes between the check and the act. Catching <code>KeyError</code> or <code>FileNotFoundError</code> is often the honest version.</p>
+
+<h1>12. Classes</h1>
+<p>A class is a blueprint. An instance is one built object. <code>self</code> is the instance the method was called on. You list it as the first parameter. You do not pass it at the call: <code>ticket.leave()</code> passes <code>ticket</code> as <code>self</code>.</p>
+<pre>class Ticket:
+    def __init__(self, plate, entry):
+        self.plate = plate
+        self.entry = entry
+        self.exit = None
+
+    def close(self, now):
+        self.exit = now
+        return now - self.entry
+
+ticket = Ticket("KA01", 10)
+ticket.close(25)</pre>
+<p><code>__init__</code> initializes a new instance. It does not return the instance. Python creates the instance, then calls <code>__init__</code>.</p>
+<p>Attributes set on <code>self</code> belong to that instance. Attributes set on the class are shared.</p>
+<pre>class Lot:
+    city = "Pune"          # shared
+    def __init__(self):
+        self.spots = []    # per instance</pre>
+<p>A mutable class attribute, such as a list defined on the class, is one list for every instance that does not override it. Put per-instance containers on <code>self</code> inside <code>__init__</code>.</p>
+
+<h2>Methods</h2>
+<p>An ordinary method receives the instance. A <code>@classmethod</code> receives the class, and is how you write an alternate constructor. A <code>@staticmethod</code> receives neither. It is a function parked in the class because it belongs to that topic. Prefer a module-level function when it does not need the class at all.</p>
+<pre>class Link:
+    def __init__(self, code, url):
+        self.code = code
+        self.url = url
+
+    @classmethod
+    def from_pair(cls, pair):
+        code, url = pair
+        return cls(code, url)</pre>
+<p>A <code>@property</code> looks like an attribute and runs a method. Use it when reading a value should stay cheap and stable, and when replacing a stored attribute with a calculation should not break callers.</p>
+<pre>class Circle:
+    def __init__(self, radius):
+        self.radius = radius
+
+    @property
+    def area(self):
+        return 3.14159 * self.radius ** 2</pre>
+
+<h2>Inheritance</h2>
+<p>A subclass is a more specific blueprint. It reuses the superclass and can override methods. <code>super()</code> calls the next implementation in the method resolution order.</p>
+<pre>class Vehicle:
+    def spots(self):
+        return 1
+
+class Bus(Vehicle):
+    def spots(self):
+        return 5</pre>
+<p><code>isinstance(bus, Vehicle)</code> is true. <code>type(bus) is Vehicle</code> is false. Prefer <code>isinstance</code> when you mean “can this be treated as.”</p>
+<p>The <strong>MRO</strong> is the order Python searches parent classes. With single inheritance it is the obvious chain. With multiple inheritance, Python uses the C3 order so each parent appears before its own parents and so a class is not visited twice. You rarely need multiple inheritance. When you do, read <code>Class.__mro__</code> before you trust <code>super()</code>.</p>
+<p>A leading underscore, <code>_cache</code>, is a convention: “internal, callers should use the public method.” Two leading underscores, <code>__cache</code>, trigger name mangling to <code>_ClassName__cache</code>, which avoids accidental overrides in subclasses. It is not a security boundary. Nothing in a Python object is hidden from a determined caller.</p>
+
+<h2>Dataclasses and enums</h2>
+<p>A dataclass writes <code>__init__</code>, <code>__repr__</code>, and <code>__eq__</code> for a class that mostly stores fields.</p>
+<pre>from dataclasses import dataclass
+
+@dataclass
+class Point:
+    x: float
+    y: float
+
+    def moved(self, dx, dy):
+        return Point(self.x + dx, self.y + dy)</pre>
+<p><code>frozen=True</code> makes assignment to fields fail, which is what you want for a value that should be a dict key. <code>slots=True</code> on a dataclass stores fields more tightly and rejects accidental new attributes.</p>
+<p>An enum is a fixed set of named constants.</p>
+<pre>from enum import Enum
+
+class State(Enum):
+    HELD = "held"
+    SOLD = "sold"</pre>
+<p>Compare with <code>is</code> or <code>==</code> against the member, not against the raw string scattered through the program.</p>
+
+<h1>13. The data model</h1>
+<p>Python’s syntax is sugar over methods with double underscores. When you write <code>len(box)</code>, Python calls <code>box.__len__()</code>. When you write <code>a + b</code>, it calls <code>a.__add__(b)</code>. When you write <code>box[0]</code>, it calls <code>box.__getitem__(0)</code>. Implementing these methods is how your class joins the language.</p>
+<table>
+<tr><th>You write</th><th>Python calls</th></tr>
+<tr><td><code>len(obj)</code></td><td><code>__len__</code></td></tr>
+<tr><td><code>obj[key]</code></td><td><code>__getitem__</code></td></tr>
+<tr><td><code>for x in obj</code></td><td><code>__iter__</code></td></tr>
+<tr><td><code>str(obj)</code> and print</td><td><code>__str__</code></td></tr>
+<tr><td>the prompt and containers</td><td><code>__repr__</code></td></tr>
+<tr><td><code>obj == other</code></td><td><code>__eq__</code></td></tr>
+<tr><td><code>hash(obj)</code> and dict keys</td><td><code>__hash__</code></td></tr>
+<tr><td><code>with obj</code></td><td><code>__enter__</code> and <code>__exit__</code></td></tr>
+<tr><td><code>obj()</code></td><td><code>__call__</code></td></tr>
+</table>
+<p><code>__repr__</code> should be unambiguous, ideally a string that shows how to rebuild the value. <code>__str__</code> can be friendly. If you define only <code>__repr__</code>, <code>print</code> uses it too.</p>
+<p>If you define <code>__eq__</code>, Python sets <code>__hash__</code> to <code>None</code> unless you define that too, and the objects cannot be set members or dict keys. Equal objects must have equal hashes. The hash of a mutable object is a trap, because changing the object after inserting it into a set loses the entry. Hash immutable values.</p>
+<p>Duck typing means “if it has the methods you need, use it.” A function that calls <code>write</code> can accept a file, a <code>StringIO</code>, or your own class with <code>write</code>. A <code>Protocol</code> in the typing chapter names that shape for the type checker. An abstract base class, from <code>abc</code>, refuses to instantiate a subclass that forgot a required method. Use a Protocol when you want structure. Use an ABC when you want a shared base that enforces a contract.</p>
+
+<h1>14. Iterators, generators, and with</h1>
+<p>An <strong>iterable</strong> can produce an iterator, usually through <code>__iter__</code>. An <strong>iterator</strong> produces the next value through <code>__next__</code> and raises <code>StopIteration</code> when it is done. A <code>for</code> loop gets an iterator and calls next until that exception. You rarely write the class form. You write a generator.</p>
+<p>A <strong>generator</strong> is a function that uses <code>yield</code>. Calling it does not run the body. It returns a generator object. Each <code>next</code> runs until the next <code>yield</code>, pauses, and resumes there later. Generators produce one item at a time, so a billion-row scan does not become a billion-row list.</p>
+<pre>def countdown(n):
+    while n &gt; 0:
+        yield n
+        n -= 1
+
+for value in countdown(3):
+    print(value)</pre>
+<p><code>yield from other</code> forwards each item from another iterable. A generator expression is the lazy cousin of a list comprehension: <code>(n * n for n in range(10))</code>. It does not compute the squares until something walks it. Walking it twice does nothing the second time. It is spent.</p>
+<p><code>itertools</code> holds the small tools: <code>chain</code>, <code>islice</code>, <code>groupby</code>, <code>count</code>, <code>cycle</code>. Reach for it before you write a nested loop that only reorganizes items.</p>
+
+<h2>Context managers</h2>
+<p><code>with</code> guarantees cleanup. The object’s <code>__enter__</code> runs at the start. <code>__exit__</code> runs at the end, whether the block succeeded, returned, or raised. Files, locks, and database transactions are the usual examples.</p>
+<p><code>contextlib.contextmanager</code> lets you write one as a generator: the code before <code>yield</code> is enter, the code after is exit.</p>
+<pre>from contextlib import contextmanager
+
+@contextmanager
+def section(title):
+    print("start", title)
+    try:
+        yield
+    finally:
+        print("end", title)</pre>
+
+<h1>15. Decorators</h1>
+<p>A decorator is a function that takes a function and returns a function, applied with <code>@</code>. The two spellings below are the same.</p>
+<pre>def shout(func):
+    def wrapper(*args, **kwargs):
+        return func(*args, **kwargs).upper()
+    return wrapper
+
+@shout
+def greet(name):
+    return f"hello {name}"</pre>
+<p>Use <code>functools.wraps</code> so the wrapper keeps the original name and docstring.</p>
+<pre>import functools
+
+def shout(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        return str(func(*args, **kwargs)).upper()
+    return wrapper</pre>
+<p>A decorator can take arguments by adding one more nested function: the outer function receives the arguments and returns the real decorator. Built-in decorators you will use constantly are <code>@property</code>, <code>@classmethod</code>, <code>@staticmethod</code>, <code>@dataclass</code>, and <code>@functools.lru_cache</code> or <code>@functools.cache</code> for a pure function you want to memoize. Cache only functions whose results depend only on their arguments. A cached function that reads a global or the clock will lie.</p>
+
+<h1>16. Modules, packages, and installs</h1>
+<p>A <strong>module</strong> is a <code>.py</code> file. A <strong>package</strong> is a folder of modules. <code>import math</code> loads the module and binds the name <code>math</code>. <code>from math import sqrt</code> binds <code>sqrt</code> itself. <code>import math as m</code> renames it locally.</p>
+<p>Importing runs the module’s top level once and caches the module in <code>sys.modules</code>. A second import does not run it again. Keep the top level boring: definitions, not a program that starts work. Put the program under this guard so importing the file does not launch it:</p>
+<pre>def main():
+    print("running")
+
+if __name__ == "__main__":
+    main()</pre>
+<p><code>__name__</code> is <code>"__main__"</code> only when that file was the one you started. When another file imports it, <code>__name__</code> is the module’s name.</p>
+<p>A package folder may contain <code>__init__.py</code>. That file runs when the package is imported. Relative imports, <code>from . import codec</code>, stay inside the package. They work when the package is imported as a package, and they fail if you run an inner file as a loose script. Run <code>python -m package.module</code> instead.</p>
+<p>The import path is <code>sys.path</code>: the script’s directory, then installed locations. Do not modify it in ordinary programs. Name your modules so they do not shadow the standard library. A file called <code>json.py</code> will hide the real <code>json</code>.</p>
+
+<h2>Environments and packages</h2>
+<p>A virtual environment is a private folder of installed libraries for one project, so project A’s library version does not change project B.</p>
+<pre>python -m venv .venv
+.venv\Scripts\activate
+python -m pip install requests</pre>
+<p><code>pip</code> installs packages from the Python Package Index and from local folders. Pin versions in a requirements file or, better for a real project, declare them in <code>pyproject.toml</code>. That file is also where a tool reads the project’s name, the Python version it needs, and the build backend. You do not need to publish a package to benefit from a venv and a pinned list. You need them the moment a program must run again next month.</p>
+<p>The standard library ships with Python. Third-party packages do not. Prefer the standard library when it does the job.</p>
+
+<h1>17. Type hints</h1>
+<p>Hints describe the kinds of values you intend. Python does not enforce them while the program runs. A type checker such as <code>pyright</code> or <code>mypy</code> reads them as a separate step. Hints pay off in anything larger than a script: editors complete names, and a wrong argument is caught before the program runs.</p>
+<pre>def clamp(n: int, low: int, high: int) -> int:
+    if n &lt; low:
+        return low
+    if n &gt; high:
+        return high
+    return n
+
+def find(code: str) -> str | None:
+    return codes.get(code)</pre>
+<p><code>str | None</code> means a string or <code>None</code>. <code>list[str]</code>, <code>dict[str, int]</code>, and <code>tuple[int, int]</code> name the insides. <code>tuple[int, ...]</code> is a tuple of any length of ints. A bare <code>list</code> hint does not say what the list holds.</p>
+<pre>from collections.abc import Callable, Iterable, Sequence
+
+def total(nums: Iterable[int]) -> int:
+    return sum(nums)
+
+def apply(fn: Callable[[int], int], n: int) -> int:
+    return fn(n)</pre>
+<p>Hint the most general thing you actually use. If you only iterate, hint <code>Iterable</code>. If you index and take <code>len</code>, hint <code>Sequence</code>.</p>
+<p>A <code>Protocol</code> names a structural shape. Any object with those methods satisfies it, with or without a shared base class.</p>
+<pre>from typing import Protocol
+
+class Writer(Protocol):
+    def write(self, text: str) -> int: ...</pre>
+<p>A <code>TypedDict</code> describes a dict with known keys, which is what JSON objects become. A dataclass is still the better choice when you own the type. Use <code>TypedDict</code> at the edge where the data really is a dict.</p>
+<p>Generics use <code>TypeVar</code> or, in current Python, a type parameter: <code>class Box[T]</code>. You need them when a function’s result type depends on its input type, such as “this cache stores whatever type you put in.”</p>
+<p>Casts and <code>Any</code> switch the checker off for that expression. Use them at a boundary you do not control, and keep them small. A hint of <code>Any</code> on every function is the same as no hints.</p>

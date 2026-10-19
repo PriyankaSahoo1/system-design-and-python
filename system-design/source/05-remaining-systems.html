@@ -1,0 +1,96 @@
+<h1>30. The remaining systems people ask for</h1>
+<p>These use only tools from earlier chapters. Each section names the part that is new.</p>
+
+<h2>30.1 Paste bin</h2>
+<p>A user posts text and receives a link. Opening the link shows the text. Optional expiry and optional unlisted ids. This is TinyLink with a larger body. Store the body in object storage when it can be big, and metadata in SQL. The id is an unguessable random token when the paste is unlisted, because neighbors must not be scanable. Cache hot pastes. A view counter follows the click-queue pattern. Abuse scanning runs on the queue before the paste is marked public.</p>
+
+<h2>30.2 Distributed cache as a product</h2>
+<p>The cache itself is a system. Clients hash a key to a node with consistent hashing and virtual nodes. Each node holds an in-memory map and talks replication to the next node on the ring so one death does not drop every key. A client that guesses the wrong node is told the right one, or a small proxy tier routes for it. Eviction is LRU inside the node. Persistence to disk is optional: turned on when the cache is allowed to be a durable store, left off when it is a rebuildable shelf. Operations that must be atomic (rate-limit decrement, compare-and-set) run inside the node that owns the key. The hard parts are hot keys, resharding when you add nodes, and the choice of what happens on a miss of a dead node: error, or a stale replica.</p>
+
+<h2>30.3 Leaderboard</h2>
+<p>You need the top scores and a player’s rank. A sorted map gives both: score order, and the position of one id. In a database, an index on score answers top-100 and a count of rows with a higher score answers rank, and that count gets expensive. A practical design keeps the top of the board in memory or in a sorted in-memory structure, updates it on each new score, and snapshots it to the database. For a global board with very high write rates, shard by game and time window (today, this week), keep each window’s top list, and treat exact rank for a low-scoring player as approximate or as a slower query. Say which ranks are exact. Ties need a second sort key, usually time.</p>
+
+<h2>30.4 Ride matching</h2>
+<p><strong>Job.</strong> A rider requests a trip. The system offers it to a nearby driver and records the trip from request to drop-off.</p>
+<p><strong>Location.</strong> Drivers send location every few seconds. You do not run “distance to every driver” as a table scan. Geohash or a grid cell turns a latitude and longitude into a cell id. An index maps cell id to the drivers currently in it. A request looks at the rider’s cell and the neighboring cells, then computes true distance for that short list. Location updates are a high write rate; store the latest point in a key-value store and keep history only if the product needs it.</p>
+<p><strong>Match.</strong> A trip row is created in state <code>requested</code>. A matcher picks the closest eligible driver who is free and pushes an offer on that driver’s socket. The driver accepts or the offer times out and the matcher tries the next. The conditional update is <code>set state = offered where id = ? and state = requested</code>, and for the driver <code>set status = reserved where driver_id = ? and status = free</code>. Exactly one matcher wins. States then run <code>requested → offered → accepted → started → completed</code>, with <code>cancelled</code> from the early states.</p>
+<p><strong>Hard parts.</strong> Location is stale by a few seconds; say so. A surge of requests in one cell is a hot cell: the matcher for that cell must be sharded by finer cells. Payments attach at completion using the payments design. ETA is a call to a routing service, cached briefly, and allowed to be approximate.</p>
+
+<h2>30.5 Hotel or inventory booking</h2>
+<p>Same race as movie seats, different words. A room type on a night has a remaining count, or each physical room is a row. A hold decrements availability with a conditional update <code>where remaining &gt;= rooms_requested</code> and writes a hold that expires. Confirm turns the hold into a booking after payment. Overbooking policy, if the business wants it, is an explicit extra count, not an accident of a race. A calendar of nights is the query: index by <code>(hotel_id, night)</code>. Searching a city is a read model: a document per hotel with amenities, updated from the source of truth, queried by the search index.</p>
+
+<h2>30.6 Flash sale and inventory</h2>
+<p>A small stock meets a huge burst. The database row “20 left” will serialize all the buyers if every purchase locks it. Practical path: before the sale, place the 20 tokens in a cache or a queue. Each buyer takes one token atomically. Only token holders proceed to checkout and payment. When payment fails, the token returns. When the tokens are gone, the service refuses quickly without touching the database. The database still records the order as the source of truth. The token pile is an admission gate. This keeps the hot second off the SQL row lock. After the rush, reconcile tokens against paid orders.</p>
+
+<h2>30.7 Coupons</h2>
+<p>A coupon has a code, a rule (percent or amount), a validity window, a global redemption cap, and a per-user cap. Redeem is a conditional update: insert a redemption row with a unique <code>(coupon_id, user_id, order_id)</code> and increment <code>used_count</code> only if <code>used_count &lt; cap</code>. Two parallel checkouts for one user lose on the unique key. Rules that stack or exclude each other belong in a strategy object evaluated before the write. The write is what makes the cap real.</p>
+
+<h2>30.8 Collaborative document</h2>
+<p>Several people edit one document and should converge. Two families of rules:</p>
+<p><strong>Operational transform.</strong> Each edit is an operation, such as “insert ‘a’ at index 4.” The server orders operations and rewrites later operations so they still make sense after earlier ones. A central order is required. This is how many classic co-editors work.</p>
+<p><strong>CRDT.</strong> Conflict-free replicated data types. Each character has a unique id and a position that sorts the same way on every replica. Inserts and deletes commute, so replicas that receive the same operations in different orders reach the same document. The server can be a relay. Metadata per character is the cost.</p>
+<p>The rest of the system is familiar: a WebSocket gateway, a log of operations per document (the source of truth), periodic snapshots so a new joiner does not replay ten years, and authorization on the document. Presence of cursors is a side channel and may be lossy. Offline edits are operations queued on the client and merged when the client reconnects, using whichever rule you chose.</p>
+
+<h2>30.9 Social graph and recommendations, lightly</h2>
+<p>“Who should I follow?” is a batch or nearline job, not a query you invent on the tap. A job walks follows, computes simple signals (friends of friends, overlap), and writes the top suggestions per user into a key-value row. The tap reads that row. Recompute on a schedule and after a follow. Doing the walk live, on a hot path, does not survive popular users.</p>
+
+<h2>30.10 Counters at high speed</h2>
+<p>A like button pressed millions of times will crush a single row if every press is a transaction on it. Buffer increments in a cache, flush <code>add N</code> to the database every second, and accept that the displayed number lags. If the user must see their own like immediately, store the user’s like as a row (unique on user and post) and let the displayed total be the lagged counter. The unique row is the source of truth for “did I like this?” The counter is a derived display.</p>
+
+<h2>30.11 Backups and deploys</h2>
+<p>Replication is not a backup. A mistaken delete replicates. Take snapshots on a schedule, keep the database log so you can restore to a point in time, and practice a restore. For files, object storage versioning or a copy to a second region serves the same role.</p>
+<p>Deploys should allow an old server and a new server to run together. That means the database change goes first and stays compatible with the old code: add a column before you write it, stop reading the old column before you drop it. Rolling deploy replaces servers a few at a time behind the load balancer. A health check fails the new server out of the pool if it cannot talk to the database.</p>
+
+<h2>30.12 Connection pools, timeouts, and budgets again</h2>
+<p>Each application server holds a small pool of database connections and reuses them. If you open a connection per request, the database spends its life on handshakes and then refuses new ones. Size the pool so that servers × pool size stays under the database’s max connections, with room for replicas and admin. When the pool is exhausted, fail the request. Waiting forever is how a slow database takes down every server.</p>
+<p>Give the user request a deadline. Subtract time already spent before each hop. Pass the remaining budget along. A hop that cannot finish inside its slice is cancelled.</p>
+
+<h1>31. How HLD and LLD meet on one page</h1>
+<table>
+<tr><th>HLD box or promise</th><th>What LLD must show</th></tr>
+<tr><td>Stateless API server</td><td>No user session stored in a field of a long-lived singleton. Request data arrives as arguments</td></tr>
+<tr><td>SQL unique code</td><td>Repository insert surfaces a conflict. Service turns it into a result, and does not assume the pre-check is enough</td></tr>
+<tr><td>Cache-aside</td><td><code>Cache</code> plug with get, put, delete. Service defines miss, expiry re-check, and what happens when the cache throws</td></tr>
+<tr><td>At-least-once queue</td><td>Consumer stores the message id with the effect, or the effect itself is an idempotent add that you have consciously allowed to be approximate</td></tr>
+<tr><td>Idempotency key</td><td>A unique column and a lookup-before-or-during insert that returns the original result</td></tr>
+<tr><td>State machine for payment or booking</td><td>An enum of states and the only legal transitions. Illegal ones return a clear error</td></tr>
+<tr><td>Rate limit</td><td>A pure function of tokens and time, plus an atomic update in the shared cache</td></tr>
+<tr><td>Authorization</td><td>A check inside the service or a plug called before the rule runs, using the caller id from the token, not a flag from the client</td></tr>
+<tr><td>Failover loses the last async writes</td><td>The LLD names which operations the user may need to retry, and which tokens make that retry safe</td></tr>
+</table>
+<p>When an HLD sentence has no partner in the LLD, the design still has a hole. When an LLD class has no reason in the HLD, it is decoration. Keep the pairs.</p>
+
+<h1>32. A compact formula sheet</h1>
+<pre>QPS ≈ events_in_period / seconds_in_period
+peak QPS ≈ average QPS × peak_factor
+
+storage ≈ rows × bytes_per_row × replication_factor × index_factor
+index_factor is often 2 or more
+
+bandwidth ≈ QPS × bytes_per_response
+megabytes/s ≈ (QPS × bytes) / 10^6
+
+cache size ≈ hot_keys × value_bytes × overhead
+
+availability downtime per year
+  99.9%   ≈ 8.8 hours
+  99.99%  ≈ 53 minutes
+  99.999% ≈ 5 minutes
+
+quorum overlap: R + W &gt; N
+
+base62 space of length L: 62^L
+  L = 6  ≈ 5.7 × 10^10
+  L = 7  ≈ 3.5 × 10^12
+
+snowflake layout, one common choice
+  1 unused + 41 time + 10 machine + 12 sequence
+  sequence per machine per millisecond: 4096
+
+token bucket
+  tokens = min(capacity, tokens + elapsed_seconds × refill_per_second)
+  allow if tokens &gt;= 1, then tokens = tokens - 1</pre>
+
+<h1>33. What this book deliberately leaves to practice, not to mystery</h1>
+<p>You now have the concepts, the checks, and a worked design for every standard shape: links, limits, ids, chat, feeds, files, video, search, crawl, payments, metrics, rides, bookings, sales, coupons, documents, caches, counters, and the class drills. Vendor names change every year. The behaviors in this book do not. When you meet a new product, run the ten-line script. If a step has no answer, that step is the thing to design, and the catalog chapter for that step is the chapter to reread.</p>
+<p>Implement two of the LLD drills in real code so the words become fingers: the LRU cache, and the movie-ticket hold with a conditional update. Then design one system a day on paper for two weeks. The offline test is whether you can fill the checklists in chapter 28 without opening this file, and then open it only to see what you skipped.</p>

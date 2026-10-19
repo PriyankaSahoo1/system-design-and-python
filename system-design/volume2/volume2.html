@@ -1,0 +1,1591 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>System Design Volume 2</title><style>
+  @page { size: A4; margin: 14mm 12mm 16mm 12mm; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: Georgia, "Times New Roman", serif; font-size: 11pt; line-height: 1.45; color: #1c1c1c; }
+  h1 { font-family: "Segoe UI", Calibri, sans-serif; font-size: 20pt; line-height: 1.25; margin: 18px 0 10px; page-break-before: always; }
+  h1.cover { page-break-before: avoid; font-size: 28pt; margin-top: 12px; }
+  h2 { font-family: "Segoe UI", Calibri, sans-serif; font-size: 14pt; margin: 16px 0 6px; page-break-after: avoid; }
+  h3 { font-family: "Segoe UI", Calibri, sans-serif; font-size: 12pt; margin: 12px 0 4px; page-break-after: avoid; }
+  p { margin: 0 0 8px; }
+  ul, ol { margin: 0 0 10px; padding-left: 20px; }
+  li { margin-bottom: 3px; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0 12px; font-size: 10pt; page-break-inside: avoid; }
+  th, td { border: 1px solid #c8c8c8; padding: 4px 6px; vertical-align: top; text-align: left; }
+  th { background: #f2f2f2; font-family: "Segoe UI", Calibri, sans-serif; }
+  pre { font-family: Consolas, "Courier New", monospace; font-size: 8pt; line-height: 1.32; background: #f6f6f6; padding: 8px 10px; white-space: pre-wrap; }
+  code { font-family: Consolas, "Courier New", monospace; font-size: 9.5pt; }
+  .subtitle { font-size: 13pt; margin-top: 0; }
+  .toc { columns: 2; column-gap: 24px; }
+</style></head><body>
+<h1 class="cover">System Design, Volume 2</h1>
+<p class="subtitle">Consensus, storage internals, and the class drills as working code.</p>
+<p>Volume 1 is the city map and the class blueprint. This volume opens the machines those maps assume: how a cluster picks one leader, how a disk remembers a write after a crash, and how the drills from volume 1 look as code. Every code file in the second half was run by <code>python test_volume2.py</code>. The run printed <code>all tests passed</code>.</p>
+<p>The code lives next to this book, in <code>C:\Users\Admin\Documents\SystemDesignGuide\volume2\code</code>. You can read it here offline and run it there.</p>
+
+<h2>Contents</h2>
+<ol class="toc">
+<li>Where this fits</li>
+<li>Clocks and causality</li>
+<li>Leases, leaders, and fencing tokens</li>
+<li>Raft</li>
+<li>Paxos</li>
+<li>Gossip and Merkle trees</li>
+<li>The write-ahead log and pages</li>
+<li>B-trees and LSM trees</li>
+<li>MVCC, locks, and snapshots</li>
+<li>What to say in a design</li>
+<li>Working code</li>
+</ol>
+
+<h1>1. Where this fits</h1>
+<p>Volume 1 said “a follower becomes the leader” and “a row update is atomic.” Those sentences hide real machinery. You do not implement Raft inside a URL shortener. You do need to know what you are buying when you pick a database that claims a leader, a quorum, or snapshot reads. The same is true of the class drills: a checklist is finished when the code’s tests match the rules.</p>
+
+<h1>2. Clocks and causality</h1>
+<p>Machines do not share a perfect wall clock. A timestamp from server A can be earlier than a timestamp from server B even when B’s event happened first. Designs that sort events by wall time alone will sometimes lie. Network time sync keeps clocks close. It does not make them a source of order.</p>
+
+<h2>Lamport clocks</h2>
+<p>Each process keeps an integer. On a local event it adds 1. When it sends a message it includes the integer. When it receives a message it sets its integer to one more than the maximum of its own value and the value in the message.</p>
+<p>If event A happened before event B in the sense “A could have caused B” (same process in order, or a message from A’s process reached B’s process), then A’s Lamport time is less than B’s. The other direction is not guaranteed. A smaller number does not prove A caused B. Lamport clocks give you a total order you can sort, with process id as a tiebreak. They do not tell you when two events were independent.</p>
+
+<h2>Vector clocks</h2>
+<p>A vector clock is one integer per process. On a local event, a process adds 1 to its own slot. On a send, it includes the whole vector. On receive, it takes the max of each slot, then adds 1 to its own slot.</p>
+<p>Compare two vectors. If every slot of A is less than or equal to B, and at least one slot is strictly less, A happened before B. If neither vector is less than or equal to the other, the events are <strong>concurrent</strong>. Concurrent means “neither could have known about the other,” which is the moment a design needs a merge rule: last writer wins, keep both versions, or ask the user.</p>
+<p>The code in <code>clocks.py</code> implements both clocks and the comparison. A shopping cart that accepts offline edits on two phones is the usual story. Each phone’s vector shows the server the edits were concurrent, so it must merge the carts instead of letting one timestamp erase the other.</p>
+
+<h1>3. Leases, leaders, and fencing tokens</h1>
+<p>A <strong>lease</strong> is a lock with an expiry. The holder may act until the expiry. Everyone else waits. Leases are how a leader promises “I am the only writer until time T.” Followers refuse to elect a new leader until the lease has expired. That promise depends on a bound on clock skew: the holder must stop at expiry minus the maximum skew, so it does not write after others believe the lease is over.</p>
+<p>A lease can still go wrong. The holder pauses (a long garbage-collection stop, a stalled disk) past the expiry. A new holder starts. The old holder wakes up and writes. Both believed they were the only writer.</p>
+<p>A <strong>fencing token</strong> fixes the wake-up. Every successful acquire returns a number that only increases. The storage layer remembers the highest token it has accepted and rejects any write with a smaller token. The old holder’s late write carries the old number and is refused. The lock alone is not the safety. The token check on the write is the safety.</p>
+<p><code>LeaseLock</code> and <code>FencedStore</code> in <code>clocks.py</code> are this scene in a few lines. The test acquires a lease, waits it out, acquires a newer token, writes with the new token, and shows the old token cannot overwrite the value.</p>
+<p>When a design says “we take a distributed lock in Redis,” the follow-up question is: what fencing token does the database check? A lock that can expire without a token is a performance hint, not a correctness tool.</p>
+
+<h1>4. Raft</h1>
+<p>Raft is a protocol that keeps a replicated log. Every server applies the same commands in the same order. That is the usual way a database gets one leader and identical replicas. The paper splits the problem into leader election, log replication, and safety.</p>
+
+<h2>Roles and terms</h2>
+<p>A server is a <strong>follower</strong>, a <strong>candidate</strong>, or a <strong>leader</strong>. Time is divided into <strong>terms</strong>, which are integers that only increase. Each term has at most one leader. A term can also end with no leader if an election splits the votes. The term number is on every message. A server that sees a higher term steps down and records it.</p>
+
+<h2>Election</h2>
+<p>Followers expect a heartbeat from the leader. The wait is an election timeout, randomized so two followers rarely time out together. If the heartbeat is missing, the follower becomes a candidate, adds 1 to its term, votes for itself, and asks the others for votes.</p>
+<p>A follower grants a vote when the candidate’s term is at least as new as its own, it has not voted for someone else in this term, and the candidate’s log is at least as fresh as its own. Fresh means: the last entry’s term is higher, or the term is equal and the log is at least as long. This rule is the one that stops an empty server from winning an election and erasing committed data.</p>
+<p>A candidate that receives votes from a majority becomes leader and immediately sends heartbeats. A candidate that sees a higher term becomes a follower. A split vote means the timeouts fire again in a new term. Random timeouts make the retry likely to produce one winner.</p>
+
+<h2>Log replication</h2>
+<p>A client sends a command to the leader. The leader appends it to its log as an entry carrying the current term, then sends <strong>AppendEntries</strong> to the followers. The message includes the index and term of the entry just before the new ones. A follower rejects the message if that previous entry does not match, because the logs have diverged. The leader then retries from further back until the follower finds a matching prefix, deletes the conflicting tail, and appends the leader’s tail.</p>
+<p>An entry is <strong>committed</strong> when it is on a majority of servers and at least one entry from the leader’s current term is committed with it. Raft commits an entry from an older term only as a consequence of committing a newer one. That detail prevents a later leader from erasing something another leader had already shown to a client. After commit, each server applies the entry to its state machine in log order. The client is told success only after the commit.</p>
+
+<h2>What a majority buys</h2>
+<p>Any two majorities overlap in at least one server. A new leader must have a log that a majority was willing to vote for, so its log contains every committed entry. That overlap is the whole safety argument in one sentence. It is also why a cluster of 3 tolerates 1 failure and a cluster of 5 tolerates 2. You count voting members. A server that is down does not vote. If a partition leaves a side without a majority, that side does not elect a leader and does not commit. The other side, if it has a majority, continues. Two leaders in one term would require two disjoint majorities, which cannot exist.</p>
+
+<h2>Membership changes</h2>
+<p>Adding a server is itself a log entry, not an out-of-band edit. Raft’s joint-consensus approach commits a configuration that is the old set plus the new set. A decision in that phase needs a majority of the old set and a majority of the new set. A later entry switches to the new set only. Doing the change as one abrupt cut can, during the cut, let each side believe it has a majority.</p>
+
+<h2>The model in this book</h2>
+<p><code>raft_model.py</code> runs these rules by method calls. <code>elect</code> asks for votes. Passing a short voter list is a partition: a candidate that can talk only to itself does not become leader. <code>propose</code> appends a command and replicates it. The test checks that all three nodes hold the command and that the commit index has moved. A third check shows a node whose log is newer refusing to vote for an empty candidate. There are no timers, no disk, and no retransmission loop. The rules you can see are the rules the tests lock in.</p>
+
+<h1>5. Paxos</h1>
+<p>Paxos solves the same problem: choose one value so a majority agrees, and every later reader sees that value. It is older than Raft. Raft’s log is what you get when you run a chain of Paxos decisions with a stable leader. People explain Paxos as a single decision first.</p>
+
+<h2>Roles</h2>
+<p><strong>Proposers</strong> suggest values. <strong>Acceptors</strong> vote. <strong>Learners</strong> hear the outcome. One machine can play all three roles. Acceptors are the quorum. You need a majority of acceptors.</p>
+
+<h2>Two phases</h2>
+<p>Proposal numbers are totally ordered. A proposer picks a number <em>n</em> higher than any it has used.</p>
+<p><strong>Prepare.</strong> The proposer sends <em>n</em> to the acceptors. An acceptor promises not to accept any proposal numbered below <em>n</em>. If it has already accepted something, it replies with the highest numbered value it accepted. If <em>n</em> is below a promise it already made, it rejects.</p>
+<p><strong>Accept.</strong> If a majority promised, the proposer sends an accept request. The value is not always the proposer’s own idea. If any promise came back with an already accepted value, the proposer must use the one with the highest proposal number. That is how a value that was chosen stays chosen. Acceptors accept this proposal if they have not promised a higher number since.</p>
+<p>The value is <strong>chosen</strong> when a majority of acceptors have accepted the same proposal. Learners can be told directly, or they can ask a majority and look for a value that appears in a majority of answers.</p>
+
+<h2>Why a later proposer cannot replace a chosen value</h2>
+<p>Suppose value V was accepted by a majority. Any later proposer must collect promises from a majority. Those two majorities share an acceptor. That acceptor reports V. The later proposer is required to propose V, not a new value. Higher numbers win the race to propose. They do not get to overwrite a choice.</p>
+
+<h2>Multi-Paxos and Raft</h2>
+<p>Choosing one value is one slot in a log. The next command is the next slot. If every slot runs both phases, you pay two round trips per command. <strong>Multi-Paxos</strong> elects a stable leader. The leader skips Prepare for later slots and only runs Accept, until it loses the leadership. Heartbeats, a log, and a commit index are the practical clothes on that idea. Raft writes those clothes down so two implementations do not guess different clothes. When a system says “Paxos” or “Raft,” the property you are buying is the same: one ordered log, progress with a majority, and no committed entry thrown away.</p>
+
+<h1>6. Gossip and Merkle trees</h1>
+<p><strong>Gossip</strong> spreads state the way a rumor spreads. Every few seconds a node picks a random peer and sends what it knows: membership, load, or the latest version number of a key. Each round roughly doubles the number of nodes that have heard. In a large cluster the news reaches everyone in a handful of rounds. Gossip tolerates lost messages because a later round repeats the news. It does not give you a committed log. Use it for membership lists, failure hints, and caches of metadata. Use Raft or Paxos when a write must be chosen once.</p>
+<p>A <strong>Merkle tree</strong> is a tree of hashes. Each leaf is the hash of a key range. Each parent is the hash of its children. Two replicas compare roots. Equal roots mean equal data. Unequal roots mean they compare children and walk only the branches that differ. Anti-entropy repair then copies the missing keys. Cassandra-style stores and some backup systems use this so they do not ship the whole dataset to find a few drifted keys.</p>
+
+<h1>7. The write-ahead log and pages</h1>
+<p>A database keeps two pictures of your data. The <strong>pages</strong> are the tables as the next read wants them. The <strong>write-ahead log</strong> is an append-only record of what changed. The rule is the name: the log record is forced to stable storage before the changed page is. A crash can then lose a page and still rebuild it by replaying the log.</p>
+<p>Recovery reads from the last <strong>checkpoint</strong>. A checkpoint is a note that says “pages up to this log position are on disk,” plus enough information to redo or undo in-flight transactions. Replay applies log records after that position. Records from transactions that committed are redone. Records from transactions that never committed are undone, if the system logged them before commit. After recovery the pages match the committed history.</p>
+<p><code>PageStore</code> is the crash window with the drama removed. <code>put</code> appends the log and then applies the page. <code>crash_after_log</code> appends the log and stops. The page still shows the old value. <code>recover</code> replays and the new value appears. Real engines add checksums, log segments, and group commit (several transactions forced in one disk write). The rule they are protecting is this one.</p>
+<p>Group commit is why a durable transaction is slower than a memory write and much faster than one disk rotation per client. The leader waits until the log flush returns, then acknowledges the client. That wait is the latency you pay for “after a crash the row is still there.” Asynchronous replication, from volume 1, acknowledges before a follower has the log. The local WAL surviving is a different promise from “another building has the log.”</p>
+
+<h1>8. B-trees and LSM trees</h1>
+<p>Both structures store ordered keys. They spend their disk time differently.</p>
+
+<h2>B-trees</h2>
+<p>A B-tree is pages. Internal pages hold keys that route you left or right. Leaf pages hold the records, or pointers to them. A lookup is a short walk from the root, one disk read per level, and trees of millions of rows are only a few levels tall because each page holds hundreds of keys. Leaves are linked, so a range scan reads sequentially once it has found the start.</p>
+<p>An insert that finds a full leaf <strong>splits</strong> the leaf into two and pushes a separator key into the parent. A parent that is full splits too, possibly up to the root. Updates to a B-tree are random I/O: the leaf for the next key may sit far from the leaf you just wrote. That random write is the cost. The benefit is a fast point read and a cheap range. The indexes in volume 1 are this structure unless the database tells you otherwise.</p>
+
+<h2>LSM trees</h2>
+<p>An LSM tree turns random writes into sequential ones. New writes enter a memory table, the <strong>memtable</strong>, often a balanced tree or a skip list. When the memtable is large enough it is frozen and written as a sorted file, an <strong>SSTable</strong>. The write to disk is sequential. Reads check the memtable first, then the SSTables from newest to oldest.</p>
+<p>A key can appear in several files. The newest version wins. A delete is a <strong>tombstone</strong>, a marker that says “absent,” so a later read does not return an older copy hiding in an older file. <strong>Compaction</strong> merges files, drops tombstones once they are no longer hiding anything, and throws away overwritten values. Compaction is the tax. You rewrite the same key several times over its life. That extra writing is <strong>write amplification</strong>. Checking several files on a read is <strong>read amplification</strong>.</p>
+<p>A <strong>Bloom filter</strong> on each file answers “this key is definitely not in here” and lets the read skip the file. Volume 1 described the filter. Here is why the LSM needs it: without it, every read pays a disk check per file.</p>
+<p>Two compaction styles show up in real systems. <strong>Size-tiered</strong> compaction merges files of similar size. Writes stay cheap and reads may touch more files. <strong>Leveled</strong> compaction keeps each level much larger than the one above and mostly one version of a key per level. Reads touch fewer files and compaction works harder. RocksDB, LevelDB, Cassandra, and many time-series stores are LSM engines. Traditional SQL engines are often B-trees. Newer SQL engines offer both.</p>
+<p><code>LsmTree</code> in <code>storage.py</code> is the shape: <code>put</code> and <code>delete</code> hit memory, <code>flush</code> freezes a run, <code>get</code> searches newest first, <code>compact</code> merges and drops tombstones. The test writes <code>old</code>, flushes, writes <code>new</code>, and reads <code>new</code>. Then it deletes, flushes, and compacts, and the key is gone with no tombstone left behind.</p>
+
+<h1>9. MVCC, locks, and snapshots</h1>
+<p>Volume 1 listed isolation levels. This is how a database actually provides them.</p>
+
+<h2>Two-phase locking</h2>
+<p>Under <strong>two-phase locking</strong> a transaction acquires locks in a growing phase and releases them in a shrinking phase. It does not acquire a new lock after it has released one. <strong>Strict</strong> two-phase locking holds write locks until commit or abort, so other transactions cannot read or overwrite uncommitted rows. Shared locks allow many readers. Exclusive locks allow one writer. Deadlocks are possible. The engine picks one transaction, aborts it, and the client retries. Locking makes writers wait on readers and readers wait on writers whenever they touch the same row.</p>
+
+<h2>MVCC</h2>
+<p><strong>Multi-version concurrency control</strong> keeps old versions of a row. A writer does not overwrite the only copy. It creates a new version stamped with its transaction id and marks the previous version as ended by that same id. A reader carries a <strong>snapshot</strong>: the set of transactions that had committed when the reader began. A version is visible when its creator committed inside that snapshot (or the creator is the reader itself) and its deleter has not committed inside that snapshot. Readers do not take a write lock to see a stable picture. Writers do not wait for readers. The cost is storage of old versions and a <strong>vacuum</strong> job that deletes versions no snapshot can still see.</p>
+<p>That snapshot is read committed or repeatable read, depending on when it is taken. A snapshot taken once at the start of the transaction is repeatable: later commits by others stay invisible. A snapshot refreshed on every statement is read committed. Serializable isolation needs an extra check, because two transactions can each read a snapshot and then write in a way that no serial order would allow. Engines detect that with predicate locks or by tracking the reads and aborting one writer. That abort is a normal outcome. The application retries the transaction.</p>
+<p><code>Mvcc</code> in <code>storage.py</code> is a snapshot reader. The test begins T1, writes <code>a=one</code>, begins an early reader before T1 commits, commits T1, then begins a later reader. The early snapshot does not see the row. The later snapshot does. T1 can read its own write. Nobody took a lock.</p>
+
+<h2>What you choose</h2>
+<table>
+<tr><th>Need</th><th>Mechanism that serves it</th></tr>
+<tr><td>A read of many rows that match each other</td><td>One snapshot for the whole transaction</td></tr>
+<tr><td>A seat or a balance that two writers must not both take</td><td>A conditional update or an exclusive lock, plus a unique key</td></tr>
+<tr><td>Readers that stay fast while writers work</td><td>MVCC</td></tr>
+<tr><td>A report that can see last Tuesday</td><td>Versions kept long enough, or a replica dedicated to reads</td></tr>
+</table>
+
+<h1>10. What to say in a design</h1>
+<p>You now have a precise sentence for each promise volume 1 left informal.</p>
+<ul>
+<li>“One leader” means a majority protocol, Raft or Multi-Paxos, with a term and a log. A side that lacks a majority does not take writes.</li>
+<li>“Failover” means a new election. Committed entries are on the new leader because of the vote’s log check. Uncommitted entries on the old leader can disappear.</li>
+<li>“The write is durable” means the local write-ahead log was forced. “The write survives a building failure” means a follower acknowledged it. Those are different waits.</li>
+<li>“The lock is safe across expiry” means the write carries a fencing token and storage rejects smaller tokens.</li>
+<li>“Readers do not block writers” means MVCC snapshots, and a serializable conflict ends in a retry.</li>
+<li>“This store is write-heavy” is a reason to expect an LSM engine, compaction, and Bloom filters. “This store is range-heavy” is a reason to expect a B-tree.</li>
+<li>Two offline editors need a vector clock or a log of operations. A pair of wall-clock timestamps will silently drop one of the edits.</li>
+</ul>
+
+<h1>11. Working code</h1>
+<p>The rest of this book is the source that the tests execute. Read each file against the rule named above it. Run them from the code folder:</p>
+<pre>cd C:\Users\Admin\Documents\SystemDesignGuide\volume2\code
+python test_volume2.py</pre>
+<p>The files are the drills from volume 1, plus the models from this volume: LRU cache, token bucket, base62, TinyLink, parking lot, seat holds, elevator, logger, ledger, Raft model, write-ahead log, LSM, MVCC, clocks, and the fencing token.</p>
+
+<h1>clocks.py</h1>
+<p>Clocks and the fencing token.</p>
+<pre>&quot;&quot;&quot;Lamport clocks, vector clocks, and a lease lock with a fencing token.&quot;&quot;&quot;
+
+from __future__ import annotations
+
+
+class LamportClock:
+    def __init__(self) -&gt; None:
+        self.time = 0
+
+    def tick(self) -&gt; int:
+        self.time += 1
+        return self.time
+
+    def receive(self, incoming: int) -&gt; int:
+        self.time = max(self.time, incoming) + 1
+        return self.time
+
+
+class VectorClock:
+    def __init__(self, node_id: str, nodes: list[str]) -&gt; None:
+        self.node_id = node_id
+        self.time = {node: 0 for node in nodes}
+
+    def tick(self) -&gt; dict[str, int]:
+        self.time[self.node_id] += 1
+        return dict(self.time)
+
+    def receive(self, incoming: dict[str, int]) -&gt; dict[str, int]:
+        for node, value in incoming.items():
+            self.time[node] = max(self.time[node], value)
+        self.time[self.node_id] += 1
+        return dict(self.time)
+
+
+def happened_before(left: dict[str, int], right: dict[str, int]) -&gt; bool:
+    &quot;&quot;&quot;True when left is a causal ancestor of right.&quot;&quot;&quot;
+    less_or_equal = all(left[key] &lt;= right[key] for key in left)
+    strictly_less = any(left[key] &lt; right[key] for key in left)
+    return less_or_equal and strictly_less
+
+
+def concurrent(left: dict[str, int], right: dict[str, int]) -&gt; bool:
+    return not happened_before(left, right) and not happened_before(right, left)
+
+
+class StaleFencingToken(Exception):
+    pass
+
+
+class LeaseLock:
+    &quot;&quot;&quot;The lock can expire. The fencing token is what makes a late writer harmless.&quot;&quot;&quot;
+
+    def __init__(self) -&gt; None:
+        self.holder: str | None = None
+        self.expires_at = 0.0
+        self.token = 0
+
+    def acquire(self, client: str, now: float, ttl: float) -&gt; int | None:
+        if self.holder not in (None, client) and now &lt; self.expires_at:
+            return None
+        self.token += 1
+        self.holder = client
+        self.expires_at = now + ttl
+        return self.token
+
+
+class FencedStore:
+    def __init__(self) -&gt; None:
+        self.seen = 0
+        self.value: str | None = None
+
+    def write(self, token: int, value: str) -&gt; None:
+        if token &lt; self.seen:
+            raise StaleFencingToken(token)
+        self.seen = token
+        self.value = value
+</pre>
+
+<h1>raft_model.py</h1>
+<p>Raft election, append, and commit, by direct calls.</p>
+<pre>&quot;&quot;&quot;In-process model of Raft&#x27;s rules.
+
+This is the election, vote, append, and commit logic from the Raft paper,
+run by direct calls instead of timers and a network. It exists so you can
+see a majority, a rejected stale vote, and a committed log entry.
+It is not a production Raft library.
+&quot;&quot;&quot;
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass
+class Entry:
+    term: int
+    command: str
+
+
+class RaftNode:
+    def __init__(self, node_id: str) -&gt; None:
+        self.node_id = node_id
+        self.current_term = 0
+        self.voted_for: str | None = None
+        self.log: list[Entry] = []
+        self.commit_index = -1
+        self.role = &quot;follower&quot;
+        self.leader_id: str | None = None
+
+    def last_index(self) -&gt; int:
+        return len(self.log) - 1
+
+    def last_term(self) -&gt; int:
+        if not self.log:
+            return 0
+        return self.log[-1].term
+
+    def request_vote(self, term: int, candidate_id: str, last_log_index: int, last_log_term: int) -&gt; tuple[int, bool]:
+        if term &lt; self.current_term:
+            return self.current_term, False
+        if term &gt; self.current_term:
+            self._become_follower(term)
+        log_ok = self._at_least_as_fresh(last_log_index, last_log_term)
+        if log_ok and self.voted_for in (None, candidate_id):
+            self.voted_for = candidate_id
+            return self.current_term, True
+        return self.current_term, False
+
+    def append_entries(
+        self,
+        term: int,
+        leader_id: str,
+        prev_index: int,
+        prev_term: int,
+        entries: list[Entry],
+        leader_commit: int,
+    ) -&gt; tuple[int, bool]:
+        if term &lt; self.current_term:
+            return self.current_term, False
+        if term &gt; self.current_term:
+            self._become_follower(term)
+        self.role = &quot;follower&quot;
+        self.leader_id = leader_id
+        if prev_index &gt;= 0:
+            if prev_index &gt;= len(self.log) or self.log[prev_index].term != prev_term:
+                return self.current_term, False
+        for offset, entry in enumerate(entries):
+            index = prev_index + 1 + offset
+            if index &lt; len(self.log):
+                if self.log[index].term != entry.term:
+                    del self.log[index:]
+                    self.log.append(entry)
+            else:
+                self.log.append(entry)
+        if leader_commit &gt; self.commit_index:
+            self.commit_index = min(leader_commit, len(self.log) - 1)
+        return self.current_term, True
+
+    def _at_least_as_fresh(self, last_log_index: int, last_log_term: int) -&gt; bool:
+        mine = self.last_term()
+        if last_log_term != mine:
+            return last_log_term &gt; mine
+        return last_log_index &gt;= self.last_index()
+
+    def _become_follower(self, term: int) -&gt; None:
+        self.current_term = term
+        self.role = &quot;follower&quot;
+        self.voted_for = None
+        self.leader_id = None
+
+
+class Cluster:
+    def __init__(self, node_ids: list[str]) -&gt; None:
+        self.nodes = {node_id: RaftNode(node_id) for node_id in node_ids}
+
+    def elect(self, candidate_id: str, voters: list[str] | None = None) -&gt; bool:
+        &quot;&quot;&quot;voters limits who answers. A partition is a short voter list.&quot;&quot;&quot;
+        candidate = self.nodes[candidate_id]
+        candidate.current_term += 1
+        candidate.role = &quot;candidate&quot;
+        candidate.voted_for = candidate_id
+        candidate.leader_id = None
+        votes = 1
+        group = self.nodes if voters is None else {node_id: self.nodes[node_id] for node_id in voters}
+        for other in group.values():
+            if other is candidate:
+                continue
+            term, granted = other.request_vote(
+                candidate.current_term,
+                candidate_id,
+                candidate.last_index(),
+                candidate.last_term(),
+            )
+            if term &gt; candidate.current_term:
+                candidate._become_follower(term)
+                return False
+            if granted:
+                votes += 1
+        majority = len(self.nodes) // 2 + 1
+        if votes &gt;= majority:
+            candidate.role = &quot;leader&quot;
+            candidate.leader_id = candidate_id
+            return True
+        candidate.role = &quot;follower&quot;
+        return False
+
+    def propose(self, leader_id: str, command: str) -&gt; int:
+        leader = self.nodes[leader_id]
+        if leader.role != &quot;leader&quot;:
+            raise RuntimeError(&quot;not the leader&quot;)
+        leader.log.append(Entry(leader.current_term, command))
+        self.replicate(leader_id)
+        return leader.commit_index
+
+    def replicate(self, leader_id: str) -&gt; None:
+        leader = self.nodes[leader_id]
+        if leader.role != &quot;leader&quot;:
+            return
+        matched: dict[str, int] = {leader.node_id: leader.last_index()}
+        for other in self.nodes.values():
+            if other is leader:
+                continue
+            prev = common_prefix(leader, other)
+            entries = leader.log[prev + 1 :]
+            prev_term = 0 if prev &lt; 0 else leader.log[prev].term
+            term, ok = other.append_entries(
+                leader.current_term,
+                leader.node_id,
+                prev,
+                prev_term,
+                entries,
+                leader.commit_index,
+            )
+            if term &gt; leader.current_term:
+                leader._become_follower(term)
+                return
+            if ok:
+                matched[other.node_id] = other.last_index()
+        self._advance_commit(leader, matched)
+        for other in self.nodes.values():
+            if other is leader or leader.role != &quot;leader&quot;:
+                continue
+            prev = other.last_index()
+            prev_term = 0 if prev &lt; 0 else other.log[prev].term
+            other.append_entries(leader.current_term, leader.node_id, prev, prev_term, [], leader.commit_index)
+
+    def _advance_commit(self, leader: RaftNode, matched: dict[str, int]) -&gt; None:
+        majority = len(self.nodes) // 2 + 1
+        for index in range(leader.last_index(), leader.commit_index, -1):
+            if leader.log[index].term != leader.current_term:
+                continue
+            copies = sum(1 for reached in matched.values() if reached &gt;= index)
+            if copies &gt;= majority:
+                leader.commit_index = index
+                return
+
+
+def common_prefix(leader: RaftNode, follower: RaftNode) -&gt; int:
+    index = min(len(leader.log), len(follower.log)) - 1
+    while index &gt;= 0:
+        if leader.log[index].term == follower.log[index].term:
+            return index
+        index -= 1
+    return -1
+</pre>
+
+<h1>storage.py</h1>
+<p>Write-ahead log, LSM runs, and snapshot reads.</p>
+<pre>&quot;&quot;&quot;Small working models of a write-ahead log, an LSM tree, and MVCC.&quot;&quot;&quot;
+
+from __future__ import annotations
+
+
+class PageStore:
+    &quot;&quot;&quot;Log the change, then touch the page. Recovery replays anything not applied.&quot;&quot;&quot;
+
+    def __init__(self) -&gt; None:
+        self.pages: dict[str, str] = {}
+        self.wal: list[tuple[str, str]] = []
+        self.applied = 0
+
+    def put(self, key: str, value: str) -&gt; None:
+        self.wal.append((key, value))
+        self._apply_next()
+
+    def crash_after_log(self, key: str, value: str) -&gt; None:
+        &quot;&quot;&quot;The log has the write. The page does not. This is a crash window.&quot;&quot;&quot;
+        self.wal.append((key, value))
+
+    def recover(self) -&gt; None:
+        while self.applied &lt; len(self.wal):
+            self._apply_next()
+
+    def _apply_next(self) -&gt; None:
+        key, value = self.wal[self.applied]
+        self.pages[key] = value
+        self.applied += 1
+
+
+class LsmTree:
+    &quot;&quot;&quot;Writes land in memory. Flushes become sorted runs. Reads start at the newest run.&quot;&quot;&quot;
+
+    def __init__(self) -&gt; None:
+        self.mem: dict[str, str | None] = {}
+        self.runs: list[dict[str, str | None]] = []
+
+    def put(self, key: str, value: str) -&gt; None:
+        self.mem[key] = value
+
+    def delete(self, key: str) -&gt; None:
+        self.mem[key] = None
+
+    def flush(self) -&gt; None:
+        if not self.mem:
+            return
+        self.runs.append(self.mem)
+        self.mem = {}
+
+    def get(self, key: str) -&gt; str | None:
+        if key in self.mem:
+            return self.mem[key]
+        for run in reversed(self.runs):
+            if key in run:
+                return run[key]
+        return None
+
+    def compact(self) -&gt; None:
+        merged: dict[str, str | None] = {}
+        for run in self.runs:
+            merged.update(run)
+        merged.update(self.mem)
+        self.runs = [{key: value for key, value in merged.items() if value is not None}]
+        self.mem = {}
+
+
+class Mvcc:
+    &quot;&quot;&quot;Readers see a snapshot. Writers add a new version. They do not block each other.&quot;&quot;&quot;
+
+    def __init__(self) -&gt; None:
+        self._next = 1
+        self.committed: set[int] = set()
+        self.versions: dict[str, list[tuple[int, int | None, str | None]]] = {}
+
+    def begin(self) -&gt; tuple[int, frozenset[int]]:
+        txn = self._next
+        self._next += 1
+        return txn, frozenset(self.committed)
+
+    def commit(self, txn: int) -&gt; None:
+        self.committed.add(txn)
+
+    def write(self, txn: int, key: str, value: str | None) -&gt; None:
+        chain = self.versions.setdefault(key, [])
+        for index, (xmin, xmax, _) in enumerate(chain):
+            if xmax is None and self._visible_creator(xmin, txn, frozenset(self.committed)):
+                chain[index] = (xmin, txn, chain[index][2])
+        chain.append((txn, None, value))
+
+    def read(self, txn: int, snapshot: frozenset[int], key: str) -&gt; str | None:
+        for xmin, xmax, value in reversed(self.versions.get(key, [])):
+            if self._visible(xmin, xmax, txn, snapshot):
+                return value
+        return None
+
+    def _visible(self, xmin: int, xmax: int | None, txn: int, snapshot: frozenset[int]) -&gt; bool:
+        created = self._visible_creator(xmin, txn, snapshot)
+        deleted = xmax is not None and (xmax == txn or xmax in snapshot)
+        return created and not deleted
+
+    def _visible_creator(self, xmin: int, txn: int, snapshot: frozenset[int]) -&gt; bool:
+        return xmin == txn or xmin in snapshot
+</pre>
+
+<h1>lru.py</h1>
+<p>Hash map plus a doubly linked list.</p>
+<pre>&quot;&quot;&quot;Least-recently-used cache. get and put are O(1).&quot;&quot;&quot;
+
+from __future__ import annotations
+
+
+class _Node:
+    def __init__(self, key: object, value: object) -&gt; None:
+        self.key = key
+        self.value = value
+        self.prev: _Node | None = None
+        self.next: _Node | None = None
+
+
+class LruCache:
+    def __init__(self, capacity: int) -&gt; None:
+        if capacity &lt; 1:
+            raise ValueError(&quot;capacity must be at least 1&quot;)
+        self.capacity = capacity
+        self._map: dict[object, _Node] = {}
+        self._head = _Node(None, None)
+        self._tail = _Node(None, None)
+        self._head.next = self._tail
+        self._tail.prev = self._head
+
+    def __len__(self) -&gt; int:
+        return len(self._map)
+
+    def get(self, key: object) -&gt; object:
+        node = self._map.get(key)
+        if node is None:
+            return None
+        self._move_to_front(node)
+        return node.value
+
+    def put(self, key: object, value: object) -&gt; None:
+        node = self._map.get(key)
+        if node is not None:
+            node.value = value
+            self._move_to_front(node)
+            return
+        node = _Node(key, value)
+        self._map[key] = node
+        self._insert_front(node)
+        if len(self._map) &gt; self.capacity:
+            evicted = self._tail.prev
+            assert evicted is not None and evicted is not self._head
+            self._unlink(evicted)
+            del self._map[evicted.key]
+
+    def _insert_front(self, node: _Node) -&gt; None:
+        nxt = self._head.next
+        assert nxt is not None
+        node.prev = self._head
+        node.next = nxt
+        self._head.next = node
+        nxt.prev = node
+
+    def _unlink(self, node: _Node) -&gt; None:
+        assert node.prev is not None and node.next is not None
+        node.prev.next = node.next
+        node.next.prev = node.prev
+        node.prev = None
+        node.next = None
+
+    def _move_to_front(self, node: _Node) -&gt; None:
+        self._unlink(node)
+        self._insert_front(node)
+</pre>
+
+<h1>rate_limiter.py</h1>
+<p>Token bucket with an injected clock.</p>
+<pre>&quot;&quot;&quot;Token bucket. Time is injected so tests do not sleep.&quot;&quot;&quot;
+
+from __future__ import annotations
+
+
+class TokenBucket:
+    def __init__(self, capacity: float, refill_per_second: float, now: float) -&gt; None:
+        if capacity &lt;= 0 or refill_per_second &lt; 0:
+            raise ValueError(&quot;capacity must be positive and refill must be &gt;= 0&quot;)
+        self.capacity = float(capacity)
+        self.refill_per_second = float(refill_per_second)
+        self.tokens = float(capacity)
+        self.last = float(now)
+
+    def _refill(self, now: float) -&gt; None:
+        elapsed = now - self.last
+        if elapsed &lt; 0:
+            elapsed = 0
+        self.tokens = min(self.capacity, self.tokens + elapsed * self.refill_per_second)
+        self.last = now
+
+    def allow(self, now: float, cost: float = 1.0) -&gt; bool:
+        self._refill(now)
+        if self.tokens &lt; cost:
+            return False
+        self.tokens -= cost
+        return True
+
+
+class RateLimiter:
+    &quot;&quot;&quot;One bucket per caller key. A lock per key keeps two threads honest.&quot;&quot;&quot;
+
+    def __init__(self, capacity: float, refill_per_second: float) -&gt; None:
+        self.capacity = capacity
+        self.refill_per_second = refill_per_second
+        self._buckets: dict[str, TokenBucket] = {}
+
+    def allow(self, key: str, now: float) -&gt; bool:
+        bucket = self._buckets.get(key)
+        if bucket is None:
+            bucket = TokenBucket(self.capacity, self.refill_per_second, now)
+            self._buckets[key] = bucket
+        return bucket.allow(now)
+</pre>
+
+<h1>codec.py</h1>
+<p>Base62 encode and decode.</p>
+<pre>&quot;&quot;&quot;Base62. Same number always becomes the same short code.&quot;&quot;&quot;
+
+ALPHABET = &quot;0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ&quot;
+
+
+def encode(number: int) -&gt; str:
+    if number &lt; 0:
+        raise ValueError(&quot;number must be &gt;= 0&quot;)
+    if number == 0:
+        return ALPHABET[0]
+    chars: list[str] = []
+    while number:
+        number, remainder = divmod(number, 62)
+        chars.append(ALPHABET[remainder])
+    return &quot;&quot;.join(reversed(chars))
+
+
+def decode(code: str) -&gt; int:
+    if not code:
+        raise ValueError(&quot;empty code&quot;)
+    number = 0
+    for char in code:
+        index = ALPHABET.find(char)
+        if index &lt; 0:
+            raise ValueError(f&quot;bad character: {char}&quot;)
+        number = number * 62 + index
+    return number
+</pre>
+
+<h1>tinylink.py</h1>
+<p>Create, open, expiry, unique codes, and a retry token.</p>
+<pre>&quot;&quot;&quot;TinyLink rules, with an in-memory notebook that enforces unique keys.&quot;&quot;&quot;
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from codec import decode, encode
+
+
+class Conflict(Exception):
+    pass
+
+
+class NotFound(Exception):
+    pass
+
+
+class Expired(Exception):
+    pass
+
+
+@dataclass
+class Link:
+    id: int
+    code: str
+    long_url: str
+    created_at: float
+    expires_at: float | None
+    click_count: int
+    request_token: str | None
+
+
+@dataclass
+class CreateCommand:
+    long_url: str
+    request_token: str
+    custom_code: str | None = None
+    expires_at: float | None = None
+
+
+class MemoryRepo:
+    def __init__(self) -&gt; None:
+        self.by_code: dict[str, Link] = {}
+        self.by_token: dict[str, Link] = {}
+
+    def find_by_code(self, code: str) -&gt; Link | None:
+        return self.by_code.get(code)
+
+    def find_by_token(self, token: str) -&gt; Link | None:
+        return self.by_token.get(token)
+
+    def insert(self, link: Link) -&gt; None:
+        if link.code in self.by_code:
+            raise Conflict(link.code)
+        if link.request_token and link.request_token in self.by_token:
+            raise Conflict(link.request_token)
+        self.by_code[link.code] = link
+        if link.request_token:
+            self.by_token[link.request_token] = link
+
+
+class MemoryCache:
+    def __init__(self) -&gt; None:
+        self.store: dict[str, Link] = {}
+        self.fail = False
+
+    def get(self, code: str) -&gt; Link | None:
+        if self.fail:
+            raise RuntimeError(&quot;cache down&quot;)
+        return self.store.get(code)
+
+    def put(self, code: str, link: Link) -&gt; None:
+        if self.fail:
+            return
+        self.store[code] = link
+
+
+class IdSource:
+    def __init__(self, start: int = 1) -&gt; None:
+        self._next = start
+
+    def next_id(self) -&gt; int:
+        value = self._next
+        self._next += 1
+        return value
+
+
+class ClickQueue:
+    def __init__(self) -&gt; None:
+        self.events: list[str] = []
+
+    def publish(self, code: str) -&gt; None:
+        self.events.append(code)
+
+
+def valid_url(url: str) -&gt; bool:
+    if len(url) &gt; 2048:
+        return False
+    return url.startswith(&quot;http://&quot;) or url.startswith(&quot;https://&quot;)
+
+
+class LinkService:
+    def __init__(self, repo: MemoryRepo, cache: MemoryCache, ids: IdSource, clicks: ClickQueue) -&gt; None:
+        self.repo = repo
+        self.cache = cache
+        self.ids = ids
+        self.clicks = clicks
+
+    def create(self, command: CreateCommand, now: float) -&gt; Link:
+        if not valid_url(command.long_url):
+            raise ValueError(&quot;invalid url&quot;)
+        existing = self.repo.find_by_token(command.request_token)
+        if existing is not None:
+            return existing
+        if command.custom_code:
+            code = command.custom_code
+            link_id = self.ids.next_id()
+        else:
+            link_id = self.ids.next_id()
+            code = encode(link_id)
+        link = Link(
+            id=link_id,
+            code=code,
+            long_url=command.long_url,
+            created_at=now,
+            expires_at=command.expires_at,
+            click_count=0,
+            request_token=command.request_token,
+        )
+        try:
+            self.repo.insert(link)
+        except Conflict:
+            if command.custom_code:
+                raise
+            raise
+        self.cache.put(code, link)
+        return link
+
+    def open(self, code: str, now: float) -&gt; str:
+        link = None
+        try:
+            link = self.cache.get(code)
+        except RuntimeError:
+            link = None
+        if link is None:
+            link = self.repo.find_by_code(code)
+            if link is not None:
+                try:
+                    self.cache.put(code, link)
+                except RuntimeError:
+                    pass
+        if link is None:
+            raise NotFound(code)
+        if link.expires_at is not None and link.expires_at &lt;= now:
+            raise Expired(code)
+        self.clicks.publish(code)
+        return link.long_url
+
+
+def apply_click(repo: MemoryRepo, code: str) -&gt; None:
+    &quot;&quot;&quot;Worker. Adding 1 on the stored row is safe to repeat only if the event id is new.
+
+    This helper is the approximate-counter version: each delivery adds one.
+    Callers that need exactly-once must dedupe event ids before calling it.
+    &quot;&quot;&quot;
+    link = repo.find_by_code(code)
+    if link is None:
+        return
+    link.click_count += 1
+
+
+def shard_for(code: str, shard_count: int) -&gt; int:
+    &quot;&quot;&quot;Range-style home: decode the code back to the id, then mod.&quot;&quot;&quot;
+    return decode(code) % shard_count
+</pre>
+
+<h1>parking.py</h1>
+<p>Spot allocation, including a five-spot bus, and idempotent leave.</p>
+<pre>&quot;&quot;&quot;Parking lot. A bus takes five consecutive car spots. Leave is idempotent.&quot;&quot;&quot;
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+
+class Full(Exception):
+    pass
+
+
+class UnknownTicket(Exception):
+    pass
+
+
+@dataclass
+class Spot:
+    spot_id: str
+    size: str  # &quot;M&quot; motorcycle, &quot;C&quot; car
+    free: bool = True
+    ticket_id: str | None = None
+
+
+@dataclass
+class Vehicle:
+    plate: str
+    kind: str  # motorcycle, car, bus
+
+    def spots_needed(self) -&gt; int:
+        return 5 if self.kind == &quot;bus&quot; else 1
+
+
+@dataclass
+class Ticket:
+    ticket_id: str
+    plate: str
+    kind: str
+    spot_ids: list[str]
+    entry: float
+    exit: float | None = None
+    fee: int | None = None
+
+
+@dataclass
+class Row:
+    spots: list[Spot]
+
+    def allocate(self, vehicle: Vehicle, ticket_id: str) -&gt; list[Spot] | None:
+        if vehicle.kind == &quot;bus&quot;:
+            run: list[Spot] = []
+            for spot in self.spots:
+                if spot.free and spot.size == &quot;C&quot;:
+                    run.append(spot)
+                    if len(run) == 5:
+                        break
+                else:
+                    run = []
+            if len(run) &lt; 5:
+                return None
+            chosen = run
+        else:
+            preferred = [&quot;M&quot;, &quot;C&quot;] if vehicle.kind == &quot;motorcycle&quot; else [&quot;C&quot;]
+            chosen_one = None
+            for size in preferred:
+                for spot in self.spots:
+                    if spot.free and spot.size == size:
+                        chosen_one = spot
+                        break
+                if chosen_one is not None:
+                    break
+            if chosen_one is None:
+                return None
+            chosen = [chosen_one]
+        for spot in chosen:
+            spot.free = False
+            spot.ticket_id = ticket_id
+        return chosen
+
+
+class HourlyFee:
+    def __init__(self, rate: int) -&gt; None:
+        self.rate = rate
+
+    def fee(self, entry: float, exit_time: float) -&gt; int:
+        hours = max(1, int((exit_time - entry + 3599) // 3600))
+        return hours * self.rate
+
+
+@dataclass
+class ParkingLot:
+    rows: list[Row]
+    fees: HourlyFee
+    tickets: dict[str, Ticket] = field(default_factory=dict)
+    _seq: int = 0
+
+    def park(self, vehicle: Vehicle, now: float) -&gt; Ticket:
+        self._seq += 1
+        ticket_id = f&quot;T{self._seq}&quot;
+        taken: list[Spot] = []
+        for row in self.rows:
+            got = row.allocate(vehicle, ticket_id)
+            if got is not None:
+                taken = got
+                break
+        if not taken:
+            raise Full()
+        ticket = Ticket(ticket_id, vehicle.plate, vehicle.kind, [s.spot_id for s in taken], now)
+        self.tickets[ticket_id] = ticket
+        return ticket
+
+    def leave(self, ticket_id: str, now: float) -&gt; int:
+        ticket = self.tickets.get(ticket_id)
+        if ticket is None:
+            raise UnknownTicket(ticket_id)
+        if ticket.exit is not None and ticket.fee is not None:
+            return ticket.fee
+        for row in self.rows:
+            for spot in row.spots:
+                if spot.spot_id in ticket.spot_ids:
+                    spot.free = True
+                    spot.ticket_id = None
+        ticket.exit = now
+        ticket.fee = self.fees.fee(ticket.entry, now)
+        return ticket.fee
+</pre>
+
+<h1>tickets.py</h1>
+<p>Conditional seat hold, confirm, expire, and two threads on one seat.</p>
+<pre>&quot;&quot;&quot;Seat holds. The conditional update is what makes two buyers safe.&quot;&quot;&quot;
+
+from __future__ import annotations
+
+import threading
+from dataclasses import dataclass, field
+
+
+class Unavailable(Exception):
+    pass
+
+
+class BadState(Exception):
+    pass
+
+
+@dataclass
+class Seat:
+    seat_id: str
+    state: str = &quot;free&quot;  # free, held, sold
+    booking_id: str | None = None
+
+
+@dataclass
+class Booking:
+    booking_id: str
+    seat_ids: list[str]
+    user_id: str
+    state: str  # HELD, CONFIRMED, EXPIRED
+    hold_expires_at: float
+
+
+class Show:
+    def __init__(self, seat_ids: list[str]) -&gt; None:
+        self.seats = {seat_id: Seat(seat_id) for seat_id in seat_ids}
+        self.bookings: dict[str, Booking] = {}
+        self._seq = 0
+        self._lock = threading.Lock()
+
+    def hold(self, seat_ids: list[str], user_id: str, now: float, ttl: float = 300.0) -&gt; Booking:
+        &quot;&quot;&quot;Same shape as:
+
+        UPDATE seats SET booking_id = ? WHERE seat_id IN (...) AND state = &#x27;free&#x27;
+        Commit only when every requested row changed.
+        &quot;&quot;&quot;
+        with self._lock:
+            for seat_id in seat_ids:
+                seat = self.seats[seat_id]
+                if seat.state != &quot;free&quot;:
+                    raise Unavailable(seat_id)
+            self._seq += 1
+            booking_id = f&quot;B{self._seq}&quot;
+            for seat_id in seat_ids:
+                seat = self.seats[seat_id]
+                seat.state = &quot;held&quot;
+                seat.booking_id = booking_id
+            booking = Booking(booking_id, list(seat_ids), user_id, &quot;HELD&quot;, now + ttl)
+            self.bookings[booking_id] = booking
+            return booking
+
+    def confirm(self, booking_id: str, now: float) -&gt; Booking:
+        with self._lock:
+            booking = self.bookings[booking_id]
+            if booking.state == &quot;CONFIRMED&quot;:
+                return booking
+            if booking.state != &quot;HELD&quot; or booking.hold_expires_at &lt;= now:
+                raise BadState(booking.state)
+            for seat_id in booking.seat_ids:
+                seat = self.seats[seat_id]
+                if seat.booking_id != booking_id or seat.state != &quot;held&quot;:
+                    raise BadState(seat_id)
+            for seat_id in booking.seat_ids:
+                self.seats[seat_id].state = &quot;sold&quot;
+            booking.state = &quot;CONFIRMED&quot;
+            return booking
+
+    def expire(self, now: float) -&gt; int:
+        with self._lock:
+            expired = 0
+            for booking in self.bookings.values():
+                if booking.state == &quot;HELD&quot; and booking.hold_expires_at &lt;= now:
+                    for seat_id in booking.seat_ids:
+                        seat = self.seats[seat_id]
+                        if seat.booking_id == booking.booking_id and seat.state == &quot;held&quot;:
+                            seat.state = &quot;free&quot;
+                            seat.booking_id = None
+                    booking.state = &quot;EXPIRED&quot;
+                    expired += 1
+            return expired
+</pre>
+
+<h1>elevator.py</h1>
+<p>LOOK: finish the current direction, then reverse.</p>
+<pre>&quot;&quot;&quot;One elevator. LOOK: finish this direction, then reverse.&quot;&quot;&quot;
+
+from __future__ import annotations
+
+
+class Elevator:
+    def __init__(self, floor: int = 0) -&gt; None:
+        self.floor = floor
+        self.direction = &quot;IDLE&quot;
+        self.up: set[int] = set()
+        self.down: set[int] = set()
+        self.doors_open = False
+
+    def call(self, floor: int, direction: str) -&gt; None:
+        if direction == &quot;UP&quot;:
+            self.up.add(floor)
+        elif direction == &quot;DOWN&quot;:
+            self.down.add(floor)
+        else:
+            raise ValueError(direction)
+        self._wake()
+
+    def choose(self, floor: int) -&gt; None:
+        if floor &gt; self.floor:
+            self.up.add(floor)
+        elif floor &lt; self.floor:
+            self.down.add(floor)
+        else:
+            self.doors_open = True
+        self._wake()
+
+    def step(self) -&gt; None:
+        self.doors_open = False
+        if self.direction == &quot;IDLE&quot;:
+            self._wake()
+            if self.direction == &quot;IDLE&quot;:
+                return
+        if self.direction == &quot;UP&quot;:
+            if self.floor in self.up:
+                self.up.discard(self.floor)
+                self.doors_open = True
+                if not self.up:
+                    self.direction = &quot;DOWN&quot; if self.down else &quot;IDLE&quot;
+                return
+            if self.up and self.floor &lt; max(self.up):
+                self.floor += 1
+                return
+            self.direction = &quot;DOWN&quot; if self.down else &quot;IDLE&quot;
+            return
+        if self.floor in self.down:
+            self.down.discard(self.floor)
+            self.doors_open = True
+            if not self.down:
+                self.direction = &quot;UP&quot; if self.up else &quot;IDLE&quot;
+            return
+        if self.down and self.floor &gt; min(self.down):
+            self.floor -= 1
+            return
+        self.direction = &quot;UP&quot; if self.up else &quot;IDLE&quot;
+
+    def _wake(self) -&gt; None:
+        if self.direction != &quot;IDLE&quot;:
+            return
+        if any(floor &gt; self.floor for floor in self.up | self.down):
+            self.direction = &quot;UP&quot;
+        elif any(floor &lt; self.floor for floor in self.up | self.down):
+            self.direction = &quot;DOWN&quot;
+        elif self.floor in self.up or self.floor in self.down:
+            self.direction = &quot;UP&quot; if self.floor in self.up else &quot;DOWN&quot;
+</pre>
+
+<h1>logger.py</h1>
+<p>Level filter. One failing appender does not stop the others.</p>
+<pre>&quot;&quot;&quot;Logger. Levels filter. A failing appender does not sink the others.&quot;&quot;&quot;
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+
+LEVELS = {&quot;DEBUG&quot;: 10, &quot;INFO&quot;: 20, &quot;WARN&quot;: 30, &quot;ERROR&quot;: 40}
+
+
+@dataclass
+class LogEvent:
+    level: str
+    logger_name: str
+    message: str
+    context: dict[str, str] = field(default_factory=dict)
+
+
+class ListAppender:
+    def __init__(self) -&gt; None:
+        self.events: list[LogEvent] = []
+        self.fail = False
+
+    def append(self, event: LogEvent) -&gt; None:
+        if self.fail:
+            raise RuntimeError(&quot;disk full&quot;)
+        self.events.append(event)
+
+
+class Logger:
+    def __init__(self, name: str, min_level: str, appenders: list[ListAppender]) -&gt; None:
+        self.name = name
+        self.min_level = min_level
+        self.appenders = appenders
+        self.dropped_errors = 0
+
+    def log(self, level: str, message: str, **context: str) -&gt; None:
+        if LEVELS[level] &lt; LEVELS[self.min_level]:
+            return
+        event = LogEvent(level, self.name, message, dict(context))
+        for appender in self.appenders:
+            try:
+                appender.append(event)
+            except Exception:
+                self.dropped_errors += 1
+</pre>
+
+<h1>ledger.py</h1>
+<p>Append-only expenses. Nets are a sum. Simplified debts are a display.</p>
+<pre>&quot;&quot;&quot;Splitwise-style ledger. History is append-only. Balances are a sum.&quot;&quot;&quot;
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+
+class Unbalanced(Exception):
+    pass
+
+
+@dataclass
+class Expense:
+    expense_id: str
+    payer_id: str
+    shares: dict[str, int]
+
+
+@dataclass
+class Settlement:
+    from_user: str
+    to_user: str
+    amount: int
+
+
+@dataclass
+class GroupLedger:
+    expenses: list[Expense] = field(default_factory=list)
+    settlements: list[Settlement] = field(default_factory=list)
+    _seq: int = 0
+
+    def add_expense(self, payer_id: str, shares: dict[str, int]) -&gt; Expense:
+        if sum(shares.values()) &lt;= 0:
+            raise Unbalanced(&quot;empty&quot;)
+        if any(amount &lt; 0 for amount in shares.values()):
+            raise Unbalanced(&quot;negative share&quot;)
+        self._seq += 1
+        expense = Expense(f&quot;E{self._seq}&quot;, payer_id, dict(shares))
+        self.expenses.append(expense)
+        return expense
+
+    def settle(self, from_user: str, to_user: str, amount: int) -&gt; None:
+        if amount &lt;= 0:
+            raise Unbalanced(&quot;amount&quot;)
+        self.settlements.append(Settlement(from_user, to_user, amount))
+
+    def nets(self) -&gt; dict[str, int]:
+        &quot;&quot;&quot;Positive means the group owes this person. Negative means they owe the group.&quot;&quot;&quot;
+        net: dict[str, int] = {}
+        for expense in self.expenses:
+            total = sum(expense.shares.values())
+            net[expense.payer_id] = net.get(expense.payer_id, 0) + total
+            for user, amount in expense.shares.items():
+                net[user] = net.get(user, 0) - amount
+        for settlement in self.settlements:
+            net[settlement.from_user] = net.get(settlement.from_user, 0) + settlement.amount
+            net[settlement.to_user] = net.get(settlement.to_user, 0) - settlement.amount
+        return {user: amount for user, amount in net.items() if amount != 0}
+
+    def simplified(self) -&gt; list[tuple[str, str, int]]:
+        &quot;&quot;&quot;Display only. Same nets, fewer edges. Does not delete history.&quot;&quot;&quot;
+        debtors: list[list] = []
+        creditors: list[list] = []
+        for user, amount in self.nets().items():
+            if amount &lt; 0:
+                debtors.append([user, -amount])
+            elif amount &gt; 0:
+                creditors.append([user, amount])
+        payments: list[tuple[str, str, int]] = []
+        i = j = 0
+        while i &lt; len(debtors) and j &lt; len(creditors):
+            pay = min(debtors[i][1], creditors[j][1])
+            payments.append((debtors[i][0], creditors[j][0], pay))
+            debtors[i][1] -= pay
+            creditors[j][1] -= pay
+            if debtors[i][1] == 0:
+                i += 1
+            if creditors[j][1] == 0:
+                j += 1
+        return payments
+</pre>
+
+<h1>test_volume2.py</h1>
+<p>The checks that were run. The last line of a good run is: all tests passed.</p>
+<pre>&quot;&quot;&quot;Run from this directory: python test_volume2.py&quot;&quot;&quot;
+
+from __future__ import annotations
+
+import threading
+
+from clocks import FencedStore, LamportClock, LeaseLock, VectorClock, concurrent, happened_before
+from codec import decode, encode
+from elevator import Elevator
+from ledger import GroupLedger, Unbalanced
+from logger import ListAppender, Logger
+from lru import LruCache
+from parking import Full, HourlyFee, ParkingLot, Row, Spot, Vehicle
+from raft_model import Cluster, Entry, RaftNode
+from rate_limiter import RateLimiter, TokenBucket
+from storage import LsmTree, Mvcc, PageStore
+from tickets import BadState, Show, Unavailable
+from tinylink import (
+    ClickQueue,
+    Conflict,
+    CreateCommand,
+    Expired,
+    IdSource,
+    LinkService,
+    MemoryCache,
+    MemoryRepo,
+    NotFound,
+    shard_for,
+)
+
+
+def test_lru() -&gt; None:
+    cache = LruCache(2)
+    cache.put(&quot;a&quot;, 1)
+    cache.put(&quot;b&quot;, 2)
+    assert cache.get(&quot;a&quot;) == 1
+    cache.put(&quot;c&quot;, 3)
+    assert cache.get(&quot;b&quot;) is None
+    assert cache.get(&quot;a&quot;) == 1
+    cache.put(&quot;a&quot;, 9)
+    cache.put(&quot;d&quot;, 4)
+    assert cache.get(&quot;c&quot;) is None
+    assert cache.get(&quot;a&quot;) == 9
+    assert len(cache) == 2
+
+
+def test_rate_limiter() -&gt; None:
+    bucket = TokenBucket(capacity=2, refill_per_second=1, now=0)
+    assert bucket.allow(0)
+    assert bucket.allow(0)
+    assert not bucket.allow(0)
+    assert bucket.allow(1.0)
+    limiter = RateLimiter(1, 0)
+    assert limiter.allow(&quot;priya&quot;, 0)
+    assert not limiter.allow(&quot;priya&quot;, 0)
+    assert limiter.allow(&quot;arun&quot;, 0)
+
+
+def test_codec_and_tinylink() -&gt; None:
+    assert decode(encode(0)) == 0
+    assert decode(encode(3844)) == 3844
+    service = LinkService(MemoryRepo(), MemoryCache(), IdSource(), ClickQueue())
+    link = service.create(CreateCommand(&quot;https://example.com/a&quot;, &quot;tok-1&quot;), now=10)
+    again = service.create(CreateCommand(&quot;https://example.com/a&quot;, &quot;tok-1&quot;), now=11)
+    assert again.code == link.code
+    assert service.open(link.code, now=12) == &quot;https://example.com/a&quot;
+    try:
+        service.create(CreateCommand(&quot;https://example.com/b&quot;, &quot;tok-2&quot;, custom_code=link.code), now=13)
+        raise AssertionError(&quot;expected conflict&quot;)
+    except Conflict:
+        pass
+    try:
+        service.create(CreateCommand(&quot;notaurl&quot;, &quot;tok-3&quot;), now=13)
+        raise AssertionError(&quot;expected bad url&quot;)
+    except ValueError:
+        pass
+    short = service.create(
+        CreateCommand(&quot;https://example.com/c&quot;, &quot;tok-4&quot;, expires_at=20),
+        now=14,
+    )
+    service.cache.fail = True
+    assert service.open(short.code, now=15) == &quot;https://example.com/c&quot;
+    try:
+        service.open(short.code, now=20)
+        raise AssertionError(&quot;expected expired&quot;)
+    except Expired:
+        pass
+    try:
+        service.open(&quot;missing&quot;, now=15)
+        raise AssertionError(&quot;expected missing&quot;)
+    except NotFound:
+        pass
+    assert shard_for(link.code, 4) == link.id % 4
+
+
+def test_parking() -&gt; None:
+    spots = [Spot(f&quot;s{i}&quot;, &quot;C&quot;) for i in range(6)] + [Spot(&quot;m0&quot;, &quot;M&quot;)]
+    lot = ParkingLot([Row(spots)], HourlyFee(10))
+    bus = lot.park(Vehicle(&quot;BUS1&quot;, &quot;bus&quot;), now=0)
+    assert len(bus.spot_ids) == 5
+    bike = lot.park(Vehicle(&quot;BIKE&quot;, &quot;motorcycle&quot;), now=0)
+    assert bike.spot_ids == [&quot;m0&quot;]
+    try:
+        lot.park(Vehicle(&quot;BUS2&quot;, &quot;bus&quot;), now=0)
+        raise AssertionError(&quot;expected full&quot;)
+    except Full:
+        pass
+    assert lot.leave(bus.ticket_id, now=3601) == 20
+    assert lot.leave(bus.ticket_id, now=99999) == 20
+    car = lot.park(Vehicle(&quot;CAR&quot;, &quot;car&quot;), now=10)
+    assert car.spot_ids[0].startswith(&quot;s&quot;)
+
+
+def test_tickets() -&gt; None:
+    show = Show([&quot;A1&quot;, &quot;A2&quot;])
+    booking = show.hold([&quot;A1&quot;], &quot;priya&quot;, now=0)
+    try:
+        show.hold([&quot;A1&quot;], &quot;arun&quot;, now=1)
+        raise AssertionError(&quot;expected unavailable&quot;)
+    except Unavailable:
+        pass
+    show.confirm(booking.booking_id, now=10)
+    assert show.confirm(booking.booking_id, now=11).state == &quot;CONFIRMED&quot;
+    held = show.hold([&quot;A2&quot;], &quot;arun&quot;, now=0, ttl=5)
+    assert show.expire(now=5) == 1
+    try:
+        show.confirm(held.booking_id, now=6)
+        raise AssertionError(&quot;expected bad state&quot;)
+    except BadState:
+        pass
+
+    race = Show([&quot;Z&quot;])
+    wins: list[str] = []
+
+    def grab(user: str) -&gt; None:
+        try:
+            wins.append(race.hold([&quot;Z&quot;], user, now=0).user_id)
+        except Unavailable:
+            pass
+
+    threads = [threading.Thread(target=grab, args=(name,)) for name in (&quot;priya&quot;, &quot;arun&quot;)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert wins == [&quot;priya&quot;] or wins == [&quot;arun&quot;]
+    assert len(wins) == 1
+
+
+def test_elevator() -&gt; None:
+    car = Elevator()
+    car.call(3, &quot;UP&quot;)
+    for _ in range(3):
+        car.step()
+    assert car.floor == 3
+    car.step()
+    assert car.doors_open
+    assert car.direction == &quot;IDLE&quot;
+
+    car = Elevator()
+    car.choose(5)
+    car.step()
+    car.step()
+    car.call(1, &quot;DOWN&quot;)
+    while car.floor != 5:
+        car.step()
+    car.step()
+    assert car.doors_open and car.floor == 5
+    while not (car.floor == 1 and car.doors_open):
+        car.step()
+    assert car.floor == 1
+
+
+def test_logger() -&gt; None:
+    first = ListAppender()
+    second = ListAppender()
+    second.fail = True
+    log = Logger(&quot;api&quot;, &quot;INFO&quot;, [first, second])
+    log.log(&quot;DEBUG&quot;, &quot;hidden&quot;)
+    log.log(&quot;ERROR&quot;, &quot;disk&quot;, code=&quot;aZ&quot;)
+    assert len(first.events) == 1
+    assert first.events[0].context[&quot;code&quot;] == &quot;aZ&quot;
+    assert log.dropped_errors == 1
+
+
+def test_ledger() -&gt; None:
+    group = GroupLedger()
+    group.add_expense(&quot;anu&quot;, {&quot;anu&quot;: 50, &quot;ben&quot;: 50})
+    assert group.nets() == {&quot;anu&quot;: 50, &quot;ben&quot;: -50}
+    assert group.simplified() == [(&quot;ben&quot;, &quot;anu&quot;, 50)]
+    group.settle(&quot;ben&quot;, &quot;anu&quot;, 50)
+    assert group.nets() == {}
+    try:
+        group.add_expense(&quot;anu&quot;, {&quot;anu&quot;: -1})
+        raise AssertionError(&quot;expected unbalanced&quot;)
+    except Unbalanced:
+        pass
+
+
+def test_raft() -&gt; None:
+    cluster = Cluster([&quot;a&quot;, &quot;b&quot;, &quot;c&quot;])
+    assert cluster.elect(&quot;a&quot;)
+    assert cluster.nodes[&quot;a&quot;].role == &quot;leader&quot;
+    assert cluster.propose(&quot;a&quot;, &quot;seat-1&quot;) == 0
+    for node in cluster.nodes.values():
+        assert [entry.command for entry in node.log] == [&quot;seat-1&quot;]
+        assert node.commit_index == 0
+
+    blocked = Cluster([&quot;a&quot;, &quot;b&quot;, &quot;c&quot;])
+    assert not blocked.elect(&quot;a&quot;, voters=[&quot;a&quot;])
+    assert blocked.nodes[&quot;a&quot;].role != &quot;leader&quot;
+
+    fresh = RaftNode(&quot;b&quot;)
+    fresh.current_term = 1
+    fresh.log = [Entry(1, &quot;newer&quot;)]
+    term, granted = fresh.request_vote(2, &quot;a&quot;, last_log_index=-1, last_log_term=0)
+    assert term == 2 and not granted
+
+
+def test_storage_and_clocks() -&gt; None:
+    store = PageStore()
+    store.put(&quot;k&quot;, &quot;v1&quot;)
+    store.crash_after_log(&quot;k&quot;, &quot;v2&quot;)
+    assert store.pages[&quot;k&quot;] == &quot;v1&quot;
+    store.recover()
+    assert store.pages[&quot;k&quot;] == &quot;v2&quot;
+
+    tree = LsmTree()
+    tree.put(&quot;k&quot;, &quot;old&quot;)
+    tree.flush()
+    tree.put(&quot;k&quot;, &quot;new&quot;)
+    assert tree.get(&quot;k&quot;) == &quot;new&quot;
+    tree.delete(&quot;k&quot;)
+    tree.flush()
+    assert tree.get(&quot;k&quot;) is None
+    tree.compact()
+    assert tree.get(&quot;k&quot;) is None
+    assert all(value is not None for run in tree.runs for value in run.values())
+
+    db = Mvcc()
+    t1, snap1 = db.begin()
+    db.write(t1, &quot;a&quot;, &quot;one&quot;)
+    t_early, snap_early = db.begin()
+    db.commit(t1)
+    t2, snap2 = db.begin()
+    assert db.read(t_early, snap_early, &quot;a&quot;) is None
+    assert db.read(t2, snap2, &quot;a&quot;) == &quot;one&quot;
+    assert db.read(t1, snap1, &quot;a&quot;) == &quot;one&quot;
+
+    lamport = LamportClock()
+    assert lamport.tick() == 1
+    assert lamport.receive(5) == 6
+
+    nodes = [&quot;a&quot;, &quot;b&quot;]
+    va = VectorClock(&quot;a&quot;, nodes)
+    vb = VectorClock(&quot;b&quot;, nodes)
+    first = va.tick()
+    second = vb.receive(first)
+    assert happened_before(first, second)
+    side = vb.tick()
+    other = va.tick()
+    assert concurrent(side, other)
+
+    lock = LeaseLock()
+    store_fence = FencedStore()
+    first_token = lock.acquire(&quot;old&quot;, now=0, ttl=5)
+    assert lock.acquire(&quot;new&quot;, now=1, ttl=5) is None
+    second_token = lock.acquire(&quot;new&quot;, now=5, ttl=5)
+    assert first_token is not None and second_token is not None
+    store_fence.write(second_token, &quot;fresh&quot;)
+    try:
+        store_fence.write(first_token, &quot;late&quot;)
+        raise AssertionError(&quot;expected stale token&quot;)
+    except Exception as exc:
+        assert exc.__class__.__name__ == &quot;StaleFencingToken&quot;
+    assert store_fence.value == &quot;fresh&quot;
+
+
+if __name__ == &quot;__main__&quot;:
+    test_lru()
+    test_rate_limiter()
+    test_codec_and_tinylink()
+    test_parking()
+    test_tickets()
+    test_elevator()
+    test_logger()
+    test_ledger()
+    test_raft()
+    test_storage_and_clocks()
+    print(&quot;all tests passed&quot;)
+</pre>
+
+</body></html>
