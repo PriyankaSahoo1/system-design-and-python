@@ -18,6 +18,6 @@ Offline study guides, from first concepts through interview questions.
 
 ## FastAPI
 
-- [FastAPI](fastapi/FastAPI-Complete-Guide.pdf) covers routes, validation, dependencies, a database, login, tests, and interview answers.
+- [FastAPI](fastapi/FastAPI-Complete-Guide.pdf) covers routes, validation, dependencies, SQLite, MongoDB, login, tests, and interview answers.
 
 HTML sources used to build the PDFs are kept beside them so the guides can be regenerated later.

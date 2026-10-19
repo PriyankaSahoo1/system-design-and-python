@@ -76,6 +76,7 @@ DATABASE_URL=sqlite:///./tasks.db</pre>
 <p><strong>What is CORS?</strong> A browser refusing to let a page on one origin read a response from another origin, unless the API allows that origin. Tools that are not browsers skip this check.</p>
 <p><strong>How do you test a route?</strong> <code>TestClient</code> calls the app in process. Override dependencies so the test supplies a fake user and a throwaway database. Assert the status code and the JSON.</p>
 <p><strong>Where do settings live?</strong> In the environment, read by a settings object. The secret key is not a string in git.</p>
+<p><strong>SQLite or MongoDB?</strong> SQLite, through SQLAlchemy, stores rows in tables and gives you integer ids and <code>commit</code>. MongoDB stores documents in a collection. The id is an <code>ObjectId</code> you send as a string, and <code>insert_one</code> writes immediately. The routes and the Pydantic models stay the same. Only the load and save lines change. Use one of them while you learn the menu.</p>
 <p><strong>When do you not use BackgroundTasks?</strong> When the work must survive a crash. Use a real queue. Background tasks run after the response, in the same process, and die with it.</p>
 
 <h2>You have the map</h2>

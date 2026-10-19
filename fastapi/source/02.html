@@ -107,6 +107,76 @@ def delete_task(task_id: int, db: SessionDep):
 <p><code>commit</code> saves. <code>refresh</code> reloads the row so <code>id</code>, which the database just assigned, is filled in. <code>204</code> means success with an empty body. A list endpoint is <code>db.query(Task).offset(offset).limit(limit).all()</code>, or the newer <code>db.scalars(select(Task)).all()</code>. Always limit a list. An unbounded “return every row” becomes the outage.</p>
 <p>The Pydantic <code>TaskOut</code> can be filled from the SQLAlchemy object if you set <code>model_config = ConfigDict(from_attributes=True)</code> on the model. Then returning <code>row</code> works with <code>response_model=TaskOut</code>.</p>
 
+<h1>8a. The same tasks in MongoDB</h1>
+<p>SQLite stores rows in tables. MongoDB stores documents in collections. A document is one JSON-like object. A collection is the pile of those objects, such as all tasks. There are no joins to write. You put the fields you want to read together on the same document.</p>
+<p>Install MongoDB Community on your machine, start it, and install the Python driver. The default address is <code>mongodb://localhost:27017</code>.</p>
+<pre>python -m pip install pymongo</pre>
+<p>The driver is synchronous, so the path functions stay <code>def</code>. FastAPI runs them in a thread pool. One client is created at startup and closed at shutdown. Each request borrows the collection. The client itself is safe to share.</p>
+<pre>from pymongo import MongoClient
+from pymongo.collection import Collection
+
+client = MongoClient("mongodb://localhost:27017")
+tasks: Collection = client.taskapp.tasks
+
+def get_tasks() -> Collection:
+    return tasks</pre>
+<p>MongoDB assigns <code>_id</code> as an <code>ObjectId</code>. JSON does not understand that type, so the response turns it into a string. The create body is still <code>TaskIn</code>. The response is still <code>TaskOut</code>.</p>
+<pre>from typing import Annotated
+from bson import ObjectId
+from bson.errors import InvalidId
+from fastapi import APIRouter, Depends, HTTPException
+
+router = APIRouter(prefix="/tasks", tags=["tasks"])
+Tasks = Annotated[Collection, Depends(get_tasks)]
+
+def to_out(doc: dict) -> dict:
+    return {"id": str(doc["_id"]), "title": doc["title"], "done": doc["done"]}
+
+@router.post("", response_model=TaskOut, status_code=201)
+def create_task(payload: TaskIn, tasks: Tasks):
+    result = tasks.insert_one({"title": payload.title, "done": payload.done})
+    doc = tasks.find_one({"_id": result.inserted_id})
+    return to_out(doc)
+
+@router.get("/{task_id}", response_model=TaskOut)
+def read_task(task_id: str, tasks: Tasks):
+    try:
+        oid = ObjectId(task_id)
+    except InvalidId:
+        raise HTTPException(status_code=404, detail="Task not found")
+    doc = tasks.find_one({"_id": oid})
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return to_out(doc)
+
+@router.get("")
+def list_tasks(tasks: Tasks, limit: int = 20):
+    docs = tasks.find().limit(limit)
+    return [to_out(doc) for doc in docs]
+
+@router.delete("/{task_id}", status_code=204)
+def delete_task(task_id: str, tasks: Tasks):
+    try:
+        oid = ObjectId(task_id)
+    except InvalidId:
+        raise HTTPException(status_code=404, detail="Task not found")
+    result = tasks.delete_one({"_id": oid})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Task not found")</pre>
+<p>Declare <code>GET /tasks</code> before <code>GET /tasks/{task_id}</code> if you ever use a fixed word such as <code>/tasks/count</code>. A bad id string is not a crash. <code>ObjectId</code> rejects it, and you answer 404.</p>
+<p>Update replaces the fields you name and leaves the rest. <code>$set</code> is that partial write.</p>
+<pre>tasks.update_one({"_id": oid}, {"$set": {"done": True}})</pre>
+<p>You do not call <code>commit</code>. The write is finished when <code>insert_one</code> or <code>update_one</code> returns. There is no session to close per request unless you open a transaction, which this lesson does not need.</p>
+<p>Pick one database for the task app while you learn. SQLite when you want rows, foreign keys, and the SQLAlchemy chapter. MongoDB when each task is a document and you want to add a field without a migration. The routes, the Pydantic models, and the status codes stay the same. Only the four lines that save and load change.</p>
+<table>
+<tr><th></th><th>SQLite with SQLAlchemy</th><th>MongoDB</th></tr>
+<tr><td>A record</td><td>A row in <code>tasks</code></td><td>A document in the <code>tasks</code> collection</td></tr>
+<tr><td>Id</td><td>Integer, assigned by the table</td><td><code>ObjectId</code>, sent to the client as a string</td></tr>
+<tr><td>Save</td><td><code>add</code>, then <code>commit</code></td><td><code>insert_one</code></td></tr>
+<tr><td>Load one</td><td><code>db.get(Task, id)</code></td><td><code>find_one({"_id": oid})</code></td></tr>
+<tr><td>Change</td><td>Set attributes, then <code>commit</code></td><td><code>update_one</code> with <code>$set</code></td></tr>
+</table>
+
 <h1>9. Login</h1>
 <p>A public create-task route is a lesson. A real route asks who is calling. The usual FastAPI shape is OAuth2’s password flow plus a bearer token. The words are heavier than the idea.</p>
 <ol>
